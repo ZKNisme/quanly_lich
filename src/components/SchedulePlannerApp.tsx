@@ -202,6 +202,7 @@ export function SchedulePlannerApp() {
     title: string;
     category: EventCategory;
     dayOfWeek: DayOfWeek;
+    days?: DayOfWeek[];
     startTime: string;
     endTime: string;
     isOvernight?: boolean;
@@ -246,86 +247,123 @@ export function SchedulePlannerApp() {
               isCompleted: undefined,
             };
 
+      const targetDays =
+        payload.days && payload.days.length > 0
+          ? payload.days
+          : [payload.dayOfWeek];
+
       if (payload.id) {
-        return {
-          ...prev,
-          events: prev.events.map((ev) => {
-            if (ev.id !== payload.id) return ev;
+        const existingEvent = prev.events.find((e) => e.id === payload.id);
+        const primaryTargetDay =
+          existingEvent && targetDays.includes(existingEvent.dayOfWeek)
+            ? existingEvent.dayOfWeek
+            : targetDays[0];
+        const extraDays = payload.applyToIsoDate
+          ? []
+          : targetDays.filter((d) => d !== primaryTargetDay);
 
-            if (
-              payload.applyToIsoDate &&
-              payload.category === "work" &&
-              ev.repeatMode === "weekly" &&
-              payload.repeatMode === "weekly"
-            ) {
-              const isoDate = payload.applyToIsoDate;
-              const nextCompletedDates = new Set(ev.completedDates ?? []);
-              if (payload.isCompleted) {
-                nextCompletedDates.add(isoDate);
-              } else {
-                nextCompletedDates.delete(isoDate);
-              }
+        const updatedEvents = prev.events.map((ev) => {
+          if (ev.id !== payload.id) return ev;
 
-              return {
-                ...ev,
-                title: payload.title,
-                note: payload.note,
-                jobId: payload.jobId ?? ev.jobId ?? prev.jobs[0]?.id,
-                completedDates: Array.from(nextCompletedDates),
-                actualLogs: {
-                  ...(ev.actualLogs ?? {}),
-                  [isoDate]: {
-                    startTime: payload.startTime,
-                    endTime: payload.endTime,
-                    ...(payload.isOvernight ? { isOvernight: true } : {}),
-                    breakMinutes: payload.breakMinutes ?? 0,
-                    ...(payload.breakStartTime && payload.breakEndTime
-                      ? {
-                          breakStartTime: payload.breakStartTime,
-                          breakEndTime: payload.breakEndTime,
-                        }
-                      : {}),
-                    isHoliday: Boolean(payload.isHoliday),
-                    ...(payload.holidayMultiplier
-                      ? { holidayMultiplier: payload.holidayMultiplier }
-                      : {}),
-                    bonusAmount: payload.bonusAmount ?? 0,
-                    deductionAmount: payload.deductionAmount ?? 0,
-                  },
-                },
-              };
+          if (
+            payload.applyToIsoDate &&
+            payload.category === "work" &&
+            ev.repeatMode === "weekly" &&
+            payload.repeatMode === "weekly"
+          ) {
+            const isoDate = payload.applyToIsoDate;
+            const nextCompletedDates = new Set(ev.completedDates ?? []);
+            if (payload.isCompleted) {
+              nextCompletedDates.add(isoDate);
+            } else {
+              nextCompletedDates.delete(isoDate);
             }
 
             return {
               ...ev,
               title: payload.title,
-              category: payload.category,
-              dayOfWeek: payload.dayOfWeek,
-              startTime: payload.startTime,
-              endTime: payload.endTime,
-              isOvernight: payload.isOvernight,
               note: payload.note,
-              repeatMode: payload.repeatMode,
-              weekKey: payload.weekKey,
-              repeatStartDate:
-                payload.repeatMode === "weekly"
-                  ? (payload.repeatStartDate ?? null)
-                  : null,
-              repeatEndDate:
-                payload.repeatMode === "weekly"
-                  ? (payload.repeatEndDate ?? null)
-                  : null,
-              ...workExtras,
+              jobId: payload.jobId ?? ev.jobId ?? prev.jobs[0]?.id,
+              completedDates: Array.from(nextCompletedDates),
+              actualLogs: {
+                ...(ev.actualLogs ?? {}),
+                [isoDate]: {
+                  startTime: payload.startTime,
+                  endTime: payload.endTime,
+                  ...(payload.isOvernight ? { isOvernight: true } : {}),
+                  breakMinutes: payload.breakMinutes ?? 0,
+                  ...(payload.breakStartTime && payload.breakEndTime
+                    ? {
+                        breakStartTime: payload.breakStartTime,
+                        breakEndTime: payload.breakEndTime,
+                      }
+                    : {}),
+                  isHoliday: Boolean(payload.isHoliday),
+                  ...(payload.holidayMultiplier
+                    ? { holidayMultiplier: payload.holidayMultiplier }
+                    : {}),
+                  bonusAmount: payload.bonusAmount ?? 0,
+                  deductionAmount: payload.deductionAmount ?? 0,
+                },
+              },
             };
-          }),
+          }
+
+          return {
+            ...ev,
+            title: payload.title,
+            category: payload.category,
+            dayOfWeek: primaryTargetDay,
+            startTime: payload.startTime,
+            endTime: payload.endTime,
+            isOvernight: payload.isOvernight,
+            note: payload.note,
+            repeatMode: payload.repeatMode,
+            weekKey: payload.weekKey,
+            repeatStartDate:
+              payload.repeatMode === "weekly"
+                ? (payload.repeatStartDate ?? null)
+                : null,
+            repeatEndDate:
+              payload.repeatMode === "weekly"
+                ? (payload.repeatEndDate ?? null)
+                : null,
+            ...workExtras,
+          };
+        });
+
+        const addedExtras: ScheduleEvent[] = extraDays.map((day, idx) => ({
+          id: generateId("ev"),
+          title: payload.title,
+          category: payload.category,
+          dayOfWeek: day,
+          startTime: payload.startTime,
+          endTime: payload.endTime,
+          isOvernight: payload.isOvernight,
+          note: payload.note,
+          repeatMode: payload.repeatMode,
+          weekKey: payload.weekKey,
+          ...(payload.repeatMode === "weekly" && payload.repeatStartDate
+            ? { repeatStartDate: payload.repeatStartDate }
+            : {}),
+          ...(payload.repeatMode === "weekly" && payload.repeatEndDate
+            ? { repeatEndDate: payload.repeatEndDate }
+            : {}),
+          createdAt: Date.now() + idx + 1,
+          ...workExtras,
+        }));
+
+        return {
+          ...prev,
+          events: [...updatedEvents, ...addedExtras],
         };
       }
 
-      const created: ScheduleEvent = {
+      const createdList: ScheduleEvent[] = targetDays.map((day, idx) => ({
         id: generateId("ev"),
         title: payload.title,
         category: payload.category,
-        dayOfWeek: payload.dayOfWeek,
+        dayOfWeek: day,
         startTime: payload.startTime,
         endTime: payload.endTime,
         isOvernight: payload.isOvernight,
@@ -338,24 +376,32 @@ export function SchedulePlannerApp() {
         ...(payload.repeatMode === "weekly" && payload.repeatEndDate
           ? { repeatEndDate: payload.repeatEndDate }
           : {}),
-        createdAt: Date.now(),
+        createdAt: Date.now() + idx,
         ...workExtras,
-      };
+      }));
 
       return {
         ...prev,
-        events: [...prev.events, created],
+        events: [...prev.events, ...createdList],
       };
     });
 
     setUserSelectedDay(payload.dayOfWeek);
     setEventDraft(null);
+    const savedCount =
+      payload.days && payload.days.length > 0 ? payload.days.length : 1;
     showToast(
       payload.category === "work" && payload.isCompleted
-        ? "Đã cập nhật giờ thực tế & chốt lương ca!"
+        ? savedCount > 1
+          ? `Đã chốt lương thực tế cho ${savedCount} ngày!`
+          : "Đã cập nhật giờ thực tế & chốt lương ca!"
         : payload.id
-          ? "Đã cập nhật lịch trình"
-          : "Đã thêm lịch mới"
+          ? savedCount > 1
+            ? `Đã lưu & nhân bản ra ${savedCount} ngày!`
+            : "Đã cập nhật lịch trình"
+          : savedCount > 1
+            ? `Đã thêm lịch cho ${savedCount} ngày!`
+            : "Đã thêm lịch mới"
     );
   };
 

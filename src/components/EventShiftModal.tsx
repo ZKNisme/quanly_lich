@@ -62,6 +62,7 @@ interface EventShiftModalProps {
     title: string;
     category: EventCategory;
     dayOfWeek: DayOfWeek;
+    days: DayOfWeek[];
     startTime: string;
     endTime: string;
     isOvernight?: boolean;
@@ -149,9 +150,9 @@ export function EventShiftModal({
     initial.editingEvent?.category ?? initial.category ?? "work"
   );
   const [title, setTitle] = useState(initial.editingEvent?.title ?? "");
-  const [dayOfWeek, setDayOfWeek] = useState<DayOfWeek>(
-    initial.editingEvent?.dayOfWeek ?? initial.dayOfWeek
-  );
+  const [selectedDays, setSelectedDays] = useState<DayOfWeek[]>([
+    initial.editingEvent?.dayOfWeek ?? initial.dayOfWeek,
+  ]);
   const [startTime, setStartTime] = useState(initialStartTime);
   const [endTime, setEndTime] = useState(initialEndTime);
   const [isOvernight, setIsOvernight] = useState<boolean>(
@@ -227,22 +228,29 @@ export function EventShiftModal({
     ? getDurationMinutes(startTime, endTime, effectiveOvernight)
     : 0;
 
+  const primaryDay: DayOfWeek = selectedDays[0] ?? initial.dayOfWeek;
+
   const payPreview = useMemo(() => {
     if (category !== "work" || !timeValid) return null;
-    return calculateShiftPay(
-      {
-        startTime,
-        endTime,
-        isOvernight: effectiveOvernight,
-        breakMinutes,
-        isHoliday,
-        holidayMultiplier,
-        bonusAmount: Math.max(0, Number(bonusAmount) || 0),
-        deductionAmount: Math.max(0, Number(deductionAmount) || 0),
-      },
-      selectedJob,
-      dayOfWeek
+    const baseInput = {
+      startTime,
+      endTime,
+      isOvernight: effectiveOvernight,
+      breakMinutes,
+      isHoliday,
+      holidayMultiplier,
+      bonusAmount: Math.max(0, Number(bonusAmount) || 0),
+      deductionAmount: Math.max(0, Number(deductionAmount) || 0),
+    };
+    const firstPay = calculateShiftPay(baseInput, selectedJob, primaryDay);
+    const totalAllDays = selectedDays.reduce<number>(
+      (sum, d) => sum + calculateShiftPay(baseInput, selectedJob, d).totalPay,
+      0
     );
+    return {
+      ...firstPay,
+      totalAllDays,
+    };
   }, [
     category,
     timeValid,
@@ -255,7 +263,8 @@ export function EventShiftModal({
     bonusAmount,
     deductionAmount,
     selectedJob,
-    dayOfWeek,
+    primaryDay,
+    selectedDays,
   ]);
 
   const conflictReport = useMemo(() => {
@@ -266,31 +275,48 @@ export function EventShiftModal({
         ? initial.editingEvent.weekKey
         : activeWeekKey;
 
-    const primaryCheck = checkTimeConflicts(
-      { dayOfWeek, startTime, endTime, isOvernight: effectiveOvernight },
-      getEventsForWeek(allEvents, targetWeekKey),
-      0,
-      initial.editingEvent?.id
-    );
+    const targetWeekEvents = getEventsForWeek(allEvents, targetWeekKey);
+    const otherWeekEvents =
+      repeatMode === "weekly" ? getEventsForWeek(allEvents, otherWeekKey) : [];
 
-    const secondaryCheck =
-      repeatMode === "weekly"
-        ? checkTimeConflicts(
-            { dayOfWeek, startTime, endTime, isOvernight: effectiveOvernight },
-            getEventsForWeek(allEvents, otherWeekKey),
-            0,
-            initial.editingEvent?.id
-          )
-        : null;
+    const overlaps: Array<{ day: DayOfWeek; event: ScheduleEvent }> = [];
+    for (const d of selectedDays) {
+      const check = checkTimeConflicts(
+        { dayOfWeek: d, startTime, endTime, isOvernight: effectiveOvernight },
+        targetWeekEvents,
+        0,
+        initial.editingEvent?.id
+      );
+      for (const o of check.overlaps) {
+        overlaps.push({ day: d, event: o.event });
+      }
+      if (repeatMode === "weekly") {
+        const nextCheck = checkTimeConflicts(
+          { dayOfWeek: d, startTime, endTime, isOvernight: effectiveOvernight },
+          otherWeekEvents,
+          0,
+          initial.editingEvent?.id
+        );
+        for (const o of nextCheck.overlaps) {
+          if (
+            !overlaps.some(
+              (x) => x.day === d && x.event.id === o.event.id
+            )
+          ) {
+            overlaps.push({ day: d, event: o.event });
+          }
+        }
+      }
+    }
 
-    return { primaryCheck, secondaryCheck };
+    return { overlaps };
   }, [
     timeValid,
     initial.editingEvent,
     activeWeekKey,
     otherWeekKey,
     allEvents,
-    dayOfWeek,
+    selectedDays,
     startTime,
     endTime,
     effectiveOvernight,
@@ -308,7 +334,8 @@ export function EventShiftModal({
     e.preventDefault();
     const cleanTitle =
       title.trim() || (category === "work" && selectedJob ? selectedJob.name : "");
-    if (!cleanTitle || !timeValid || !repeatDateValid) return;
+    if (!cleanTitle || !timeValid || !repeatDateValid || selectedDays.length === 0)
+      return;
 
     const preservedOnceKey =
       initial.editingEvent?.repeatMode === "once" &&
@@ -323,12 +350,15 @@ export function EventShiftModal({
       applyScope === "single_date" &&
       Boolean(occurrenceIsoDate);
 
+    const submitDays = isSingleWeeklyEdit ? [primaryDay] : selectedDays;
+
     onSave({
       id: initial.editingEvent?.id,
       ...(isSingleWeeklyEdit ? { applyToIsoDate: occurrenceIsoDate } : {}),
       title: cleanTitle,
       category,
-      dayOfWeek,
+      dayOfWeek: submitDays[0],
+      days: submitDays,
       startTime,
       endTime,
       isOvernight: effectiveOvernight,
@@ -356,7 +386,7 @@ export function EventShiftModal({
     });
   };
 
-  const hasOverlap = (conflictReport?.primaryCheck.overlaps.length ?? 0) > 0;
+  const hasOverlap = (conflictReport?.overlaps.length ?? 0) > 0;
   const isPastOccurrence =
     isEditing && category === "work" && occurrenceIsoDate
       ? hasShiftEndPassed(
@@ -512,25 +542,45 @@ export function EventShiftModal({
             />
           </div>
 
-          {/* Day Pills */}
-          <div className="grid grid-cols-7 gap-1">
-            {DAY_SHORT_LABELS.map((label, idx) => {
-              const d = idx as DayOfWeek;
-              return (
-                <button
-                  key={label}
-                  type="button"
-                  onClick={() => setDayOfWeek(d)}
-                  className={`rounded-xl border py-2 text-xs font-bold transition ${
-                    dayOfWeek === d
-                      ? "border-[#231F20] bg-[#231F20] text-[#FFFDF9]"
-                      : "border-orange-200/70 bg-white text-[#231F20]/75"
-                  }`}
-                >
-                  {label}
-                </button>
-              );
-            })}
+          {/* Day Pills (Multi-select) */}
+          <div className="space-y-1">
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="font-bold text-[#231F20]">
+                Chọn ngày ({selectedDays.length} ngày)
+              </span>
+              <span className="text-[#231F20]/55">
+                Chạm để chọn nhiều ngày
+              </span>
+            </div>
+            <div className="grid grid-cols-7 gap-1">
+              {DAY_SHORT_LABELS.map((label, idx) => {
+                const d = idx as DayOfWeek;
+                const active = selectedDays.includes(d);
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() =>
+                      setSelectedDays((prev) => {
+                        if (prev.includes(d)) {
+                          return prev.length > 1
+                            ? prev.filter((x) => x !== d)
+                            : prev;
+                        }
+                        return [...prev, d].sort((a, b) => a - b);
+                      })
+                    }
+                    className={`rounded-xl border py-2 text-xs font-bold transition ${
+                      active
+                        ? "border-[#231F20] bg-[#231F20] text-[#FFFDF9]"
+                        : "border-orange-200/70 bg-white text-[#231F20]/75"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {/* Time Inputs */}
@@ -794,6 +844,9 @@ export function EventShiftModal({
                   {payPreview.allowance > 0
                     ? ` + ${formatCurrencyVnd(payPreview.allowance)} phụ cấp`
                     : ""}
+                  {selectedDays.length > 1
+                    ? ` • ${selectedDays.length} ngày: ${formatCurrencyVnd(payPreview.totalAllDays)}`
+                    : ""}
                 </p>
               )}
             </div>
@@ -808,10 +861,11 @@ export function EventShiftModal({
                     <ShieldAlert className="h-4 w-4 shrink-0" />
                     <span>Trùng khung giờ!</span>
                   </div>
-                  {conflictReport.primaryCheck.overlaps.map((o) => (
-                    <p key={o.event.id}>
-                      • Trùng <strong>{o.event.title}</strong> (
-                      {o.event.startTime}–{o.event.endTime})
+                  {conflictReport.overlaps.map((o) => (
+                    <p key={`${o.day}-${o.event.id}`}>
+                      • {DAY_SHORT_LABELS[o.day]}: Trùng{" "}
+                      <strong>{o.event.title}</strong> ({o.event.startTime}–
+                      {o.event.endTime})
                     </p>
                   ))}
                 </div>
@@ -970,10 +1024,16 @@ export function EventShiftModal({
             }`}
           >
             {category === "work" && isCompleted
-              ? "Lưu & Chốt thực nhận"
+              ? selectedDays.length > 1
+                ? `Lưu & Chốt ${selectedDays.length} ngày`
+                : "Lưu & Chốt thực nhận"
               : isEditing
-                ? "Lưu thay đổi"
-                : "Lưu lịch"}
+                ? selectedDays.length > 1
+                  ? `Lưu & Thêm (${selectedDays.length} ngày)`
+                  : "Lưu thay đổi"
+                : selectedDays.length > 1
+                  ? `Lưu ${selectedDays.length} ngày`
+                  : "Lưu lịch"}
           </button>
         </div>
       </div>
