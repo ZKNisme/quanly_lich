@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { BaoNhimLogo } from "@/components/BaoNhimLogo";
 
 interface WorkspaceHeaderProps {
@@ -9,8 +9,6 @@ interface WorkspaceHeaderProps {
   onNextWeek: () => void;
   onResetToTodayWeek: () => void;
   weekTitle: string;
-  onOpenResetModal: () => void;
-  resettableCount: number;
   isHydrated: boolean;
 }
 
@@ -20,39 +18,21 @@ export function WorkspaceHeader({
   onNextWeek,
   onResetToTodayWeek,
   weekTitle,
-  onOpenResetModal,
-  resettableCount,
   isHydrated,
 }: WorkspaceHeaderProps) {
   return (
     <header className="w-full max-w-7xl mx-auto px-3 sm:px-6 pt-3.5 sm:pt-5 pb-3 space-y-3">
-      {/* Row 1: Bánh Bao Nhím Logo + Title + Controls */}
+      {/* Row 1: Bánh Bao Nhím Logo + Title + Week Switcher */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2.5">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2.5">
-            <BaoNhimLogo className="h-11 w-11 sm:h-12 sm:w-12 shrink-0" />
-            <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight text-[#231F20]">
-              Lịch Bánh Bao
-            </h1>
-          </div>
-
-          <button
-            type="button"
-            onClick={onOpenResetModal}
-            title="Reset tuần mới"
-            className="lg:hidden inline-flex items-center gap-1 rounded-2xl border border-orange-200/70 bg-[#FFFDF9] px-3 py-2 text-xs font-bold text-[#231F20] hover:bg-orange-50/70 transition"
-          >
-            <RotateCcw className="h-3.5 w-3.5 text-[#FF7A00]" />
-            {isHydrated && resettableCount > 0 && (
-              <span className="rounded-full bg-orange-100 px-1.5 text-[10px] font-bold text-orange-800 tabular-nums">
-                {resettableCount}
-              </span>
-            )}
-          </button>
+        <div className="flex items-center gap-2.5">
+          <BaoNhimLogo className="h-11 w-11 sm:h-12 sm:w-12 shrink-0" />
+          <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight text-[#231F20]">
+            Lịch Bánh Bao
+          </h1>
         </div>
 
         {/* Right Control Cluster */}
-        <div className="flex items-center justify-center lg:justify-end flex-wrap gap-2">
+        <div className="flex items-center justify-center lg:justify-end">
           {/* Week Switcher Pill */}
           <div className="inline-flex items-center gap-1 rounded-2xl border border-orange-200/70 bg-[#FFFDF9] p-1">
             <button
@@ -91,21 +71,6 @@ export function WorkspaceHeader({
               <ChevronRight className="h-3.5 w-3.5" />
             </button>
           </div>
-
-          <button
-            type="button"
-            onClick={onOpenResetModal}
-            title="Reset tuần mới"
-            className="hidden lg:inline-flex items-center gap-1 rounded-2xl border border-orange-200/70 bg-[#FFFDF9] px-3 py-2 text-xs font-bold text-[#231F20] hover:bg-orange-50/70 transition"
-          >
-            <RotateCcw className="h-3.5 w-3.5 text-[#FF7A00]" />
-            <span>Reset tuần mới</span>
-            {isHydrated && resettableCount > 0 && (
-              <span className="rounded-full bg-orange-100 px-1.5 text-[10px] font-bold text-orange-800 tabular-nums">
-                {resettableCount}
-              </span>
-            )}
-          </button>
         </div>
       </div>
     </header>

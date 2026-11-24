@@ -19,7 +19,6 @@ import { JobColumnModal } from "@/components/JobColumnModal";
 import { MobileBottomBar } from "@/components/MobileBottomBar";
 import { MobileIncomeJobsView } from "@/components/MobileIncomeJobsView";
 import { MobileScheduleView } from "@/components/MobileScheduleView";
-import { ResetWeekModal } from "@/components/ResetWeekModal";
 import { SubjectsModal } from "@/components/SubjectsModal";
 import { WorkspaceHeader } from "@/components/WorkspaceHeader";
 import {
@@ -28,7 +27,6 @@ import {
   getWeekKeyByOffset,
 } from "@/lib/date-utils";
 import { expandWorkOccurrencesForWeekOffset } from "@/lib/payroll-engine";
-import { createSamplePlannerState } from "@/lib/sample-data";
 import { getEventsForWeek } from "@/lib/schedule-engine";
 import {
   generateId,
@@ -74,7 +72,6 @@ export function SchedulePlannerApp() {
     "new" | JobProfile | null
   >(null);
   const [showSubjectsModal, setShowSubjectsModal] = useState(false);
-  const [showResetModal, setShowResetModal] = useState(false);
   const [showCopyModal, setShowCopyModal] = useState(false);
 
   const [toast, setToast] = useState<string | null>(null);
@@ -191,14 +188,6 @@ export function SchedulePlannerApp() {
       totalIncome,
     };
   }, [state.events, state.jobs, weekOffset]);
-
-  const resettableCount = useMemo(
-    () =>
-      state.events.filter(
-        (ev) => ev.repeatMode === "once" && ev.weekKey === activeWeekKey
-      ).length,
-    [state.events, activeWeekKey]
-  );
 
   const handleSaveEvent = (payload: {
     id?: string;
@@ -496,30 +485,6 @@ export function SchedulePlannerApp() {
     );
   };
 
-  const handleResetCurrentWeek = (includeWeeklyShifts: boolean) => {
-    commitPlannerChange((prev) => ({
-      ...prev,
-      freeSlots: prev.freeSlots.filter(
-        (s) => !s.startsWith(`${activeWeekKey}:`)
-      ),
-      events: prev.events.filter((ev) => {
-        if (ev.repeatMode === "once" && ev.weekKey === activeWeekKey) {
-          return false;
-        }
-        if (
-          includeWeeklyShifts &&
-          ev.repeatMode === "weekly" &&
-          ev.category === "work"
-        ) {
-          return false;
-        }
-        return true;
-      }),
-    }));
-    setShowResetModal(false);
-    showToast("Đã reset tuần mới, giữ lại lịch học cố định!");
-  };
-
   return (
     <div className="min-h-dvh w-full text-[#231F20]">
       <WorkspaceHeader
@@ -528,8 +493,6 @@ export function SchedulePlannerApp() {
         onNextWeek={() => setWeekOffset((w) => w + 1)}
         onResetToTodayWeek={() => setWeekOffset(0)}
         weekTitle={weekTitle}
-        onOpenResetModal={() => setShowResetModal(true)}
-        resettableCount={resettableCount}
         isHydrated={isHydrated}
       />
 
@@ -725,30 +688,6 @@ export function SchedulePlannerApp() {
           weekTitle={weekTitle}
           onCopied={(msg) => showToast(msg)}
           onClose={() => setShowCopyModal(false)}
-        />
-      )}
-
-      {showResetModal && (
-        <ResetWeekModal
-          events={state.events}
-          weekTitle={weekTitle}
-          weekKey={activeWeekKey}
-          onResetCurrentWeek={handleResetCurrentWeek}
-          onLoadSampleData={() => {
-            commitPlannerChange(() => createSamplePlannerState());
-            setShowResetModal(false);
-            showToast("Đã khôi phục dữ liệu mẫu");
-          }}
-          onClearAllData={() => {
-            commitPlannerChange((prev) => ({
-              ...prev,
-              events: [],
-              freeSlots: [],
-            }));
-            setShowResetModal(false);
-            showToast("Đã xóa toàn bộ lịch trình");
-          }}
-          onClose={() => setShowResetModal(false)}
         />
       )}
     </div>
