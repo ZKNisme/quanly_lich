@@ -66,7 +66,7 @@ export function WorkspaceHeader({
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2.5">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2.5 flex-wrap">
-            <BaoNhimLogo className="h-9 w-9 sm:h-10 sm:w-10 shrink-0" />
+            <BaoNhimLogo className="h-11 w-11 sm:h-12 sm:w-12 shrink-0" />
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight text-[#231F20]">
                 Lịch Tuần & Ví Bánh Bao

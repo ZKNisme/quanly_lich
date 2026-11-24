@@ -15,10 +15,24 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Lịch Tuần & Ví Bánh Bao — Quản lý Lịch học & Part-time",
+  title: "Ví Bánh Bao — Lịch Tuần & Tính Lương",
   description:
     "Ứng dụng quản lý lịch học, soi ca làm, chống trùng lịch và tính lương Part-time chủ đề Bánh Bao Nhím.",
-  applicationName: "Bánh Bao Nhím Planner",
+  applicationName: "Ví Bánh Bao",
+  appleWebApp: {
+    capable: true,
+    title: "Ví Bánh Bao",
+    statusBarStyle: "default",
+  },
+  icons: {
+    icon: [
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [
+      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+    ],
+  },
 };
 
 export const viewport: Viewport = {
