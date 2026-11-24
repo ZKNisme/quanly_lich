@@ -1,26 +1,68 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f6fad9;
+  --foreground: #231f20;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-plus-jakarta);
+  --font-mono: var(--font-jetbrains-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+html,
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  min-height: 100%;
+  background-color: #eef6d6;
+  background-image:
+    radial-gradient(circle, rgba(255, 255, 255, 0.7) 1.75px, transparent 1.75px),
+    linear-gradient(180deg, #f6fad9 0%, #e1f0d3 100%);
+  background-size: 22px 22px, 100% 100%;
+  background-attachment: fixed;
+  color: #231f20;
+  font-family: var(--font-plus-jakarta), system-ui, -apple-system, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Striped orange & cream swirl pattern for Bánh Bao Nhím goal progress bar */
+.bg-bao-striped {
+  background-color: #ff7a00;
+  background-image: repeating-linear-gradient(
+    -45deg,
+    #ff7a00,
+    #ff7a00 8px,
+    #fffdf9 8px,
+    #fffdf9 14px
+  );
+}
+
+.bg-bao-striped-soft {
+  background-color: #ffd3a8;
+  background-image: repeating-linear-gradient(
+    -45deg,
+    #ffd3a8,
+    #ffd3a8 8px,
+    #fff5ea 8px,
+    #fff5ea 14px
+  );
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgb(255 122 0 / 0.25);
+  border-radius: 9999px;
 }
