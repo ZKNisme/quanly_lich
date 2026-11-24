@@ -186,17 +186,6 @@ export function DesktopRightSidebar({
           </div>
         </div>
 
-        {isHydrated && shownSummary.unconfirmedPastCount > 0 && (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50/85 px-3 py-2 text-[11px] font-semibold text-amber-900">
-            Có{" "}
-            <strong className="tabular-nums">
-              {shownSummary.unconfirmedPastCount} ca
-            </strong>{" "}
-            đã qua giờ lịch — bấm vào ca để sửa giờ làm thực tế &amp; chốt
-            lương.
-          </div>
-        )}
-
         {/* Monthly Goal Bar (Bánh Bao Nhím Striped Orange-Cream) */}
         <div className="pt-1.5 space-y-1.5 border-t border-orange-100">
           <div className="flex items-center justify-between text-[11px]">

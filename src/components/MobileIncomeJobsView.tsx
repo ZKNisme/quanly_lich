@@ -147,17 +147,6 @@ export function MobileIncomeJobsView({
           </div>
         </div>
 
-        {isHydrated && summary.unconfirmedPastCount > 0 && (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50/85 px-3 py-2 text-[11px] font-semibold text-amber-900">
-            Có{" "}
-            <strong className="tabular-nums">
-              {summary.unconfirmedPastCount} ca
-            </strong>{" "}
-            đã qua giờ lịch — chạm vào ca bên dưới để sửa giờ làm thực tế &amp;
-            chốt lương.
-          </div>
-        )}
-
         {/* Monthly Goal (Striped Orange & Cream Progress Bar) */}
         <div className="pt-2 border-t border-orange-100 space-y-1.5">
           <div className="flex items-center justify-between text-xs">
@@ -355,19 +344,11 @@ export function MobileIncomeJobsView({
                       className={`inline-flex items-center gap-1 rounded-xl px-2 py-0.5 text-[10px] font-bold ${
                         occ.isCompleted
                           ? "bg-[#ECF7E4] text-[#276723] border border-[#C3E5AE]"
-                          : occ.isPastScheduled
-                            ? "border border-amber-300 bg-amber-50 text-amber-800"
-                            : "border border-orange-200 bg-white text-[#231F20]"
+                          : "border border-orange-200 bg-white text-[#231F20]"
                       }`}
                     >
                       <CheckCircle2 className="h-3 w-3" />
-                      <span>
-                        {occ.isCompleted
-                          ? "Đã chốt giờ"
-                          : occ.isPastScheduled
-                            ? "Chờ chốt"
-                            : "Chốt ca"}
-                      </span>
+                      <span>{occ.isCompleted ? "Đã chốt giờ" : "Chốt ca"}</span>
                     </button>
                   </div>
                 </div>

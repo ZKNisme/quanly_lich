@@ -28,7 +28,6 @@ import {
 import {
   calculateShiftPay,
   formatShortDateFromIso,
-  hasShiftEndPassed,
 } from "@/lib/payroll-engine";
 import { checkTimeConflicts, getEventsForWeek } from "@/lib/schedule-engine";
 import type {
@@ -387,16 +386,6 @@ export function EventShiftModal({
   };
 
   const hasOverlap = (conflictReport?.overlaps.length ?? 0) > 0;
-  const isPastOccurrence =
-    isEditing && category === "work" && occurrenceIsoDate
-      ? hasShiftEndPassed(
-          occurrenceIsoDate,
-          startTime,
-          endTime,
-          effectiveOvernight,
-          new Date()
-        )
-      : false;
 
   return (
     <div
@@ -585,14 +574,6 @@ export function EventShiftModal({
 
           {/* Time Inputs */}
           <div className="space-y-1.5">
-            {isEditing && category === "work" && !isCompleted && (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50/85 px-3 py-2 text-[11px] font-semibold text-amber-900">
-                {isPastOccurrence
-                  ? "Ca này đã qua giờ dự kiến — hãy sửa lại giờ vào/ra thực tế bên dưới rồi chọn Đã làm xong để tính vào Thực nhận."
-                  : "Lịch làm chỉ là dự kiến. Sau khi làm xong, bạn vào sửa lại giờ chính xác bên dưới để chốt lương."}
-              </div>
-            )}
-
             <div className="flex items-center justify-between text-xs">
               <span className="font-bold text-[#231F20]">
                 {category === "work"

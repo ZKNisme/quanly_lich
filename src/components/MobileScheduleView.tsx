@@ -24,7 +24,6 @@ import {
 } from "@/lib/job-meta";
 import {
   calculateShiftPay,
-  hasShiftEndPassed,
   isOccurrenceManuallyCompleted,
   resolveEventForDate,
   resolveJobForEvent,
@@ -277,16 +276,6 @@ export function MobileScheduleView({
                     selectedDayMeta.isoDate
                   )
                 : false;
-            const isPastUnconfirmed =
-              isWork && isHydrated && !isCompleted
-                ? hasShiftEndPassed(
-                    selectedDayMeta.isoDate,
-                    event.startTime,
-                    event.endTime,
-                    event.isOvernight,
-                    new Date()
-                  )
-                : false;
 
             const duration = getDurationMinutes(
               event.startTime,
@@ -344,7 +333,7 @@ export function MobileScheduleView({
 
                 {isWork &&
                   pay &&
-                  (pay.multiplier > 1 || isCompleted || isPastUnconfirmed) && (
+                  (pay.multiplier > 1 || isCompleted) && (
                     <div className="flex items-center gap-1.5 flex-wrap text-[11px] font-semibold">
                       {pay.multiplier > 1 && (
                         <span className="rounded-lg bg-[#FFFDF9]/85 px-1.5 py-0.5 text-[10px] font-bold">
@@ -355,12 +344,6 @@ export function MobileScheduleView({
                         <span className="inline-flex items-center gap-0.5 rounded-lg bg-[#ECF7E4] px-1.5 py-0.5 text-[10px] font-bold text-[#276723] border border-[#C3E5AE]">
                           <CheckCircle2 className="h-2.5 w-2.5" />
                           Đã chốt giờ
-                        </span>
-                      )}
-                      {isPastUnconfirmed && (
-                        <span className="inline-flex items-center gap-0.5 rounded-lg bg-amber-100/90 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 border border-amber-300/70">
-                          <Clock className="h-2.5 w-2.5" />
-                          Chờ chốt giờ
                         </span>
                       )}
                     </div>

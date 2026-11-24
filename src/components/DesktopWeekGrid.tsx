@@ -15,7 +15,6 @@ import {
 } from "@/lib/job-meta";
 import {
   calculateShiftPay,
-  hasShiftEndPassed,
   isOccurrenceManuallyCompleted,
   resolveEventForDate,
   resolveJobForEvent,
@@ -161,16 +160,6 @@ export function DesktopWeekGrid({
                   isWork && isHydrated
                     ? isOccurrenceManuallyCompleted(event, dayMeta.isoDate)
                     : false;
-                const isPastUnconfirmed =
-                  isWork && isHydrated && !isCompleted
-                    ? hasShiftEndPassed(
-                        dayMeta.isoDate,
-                        event.startTime,
-                        event.endTime,
-                        event.isOvernight,
-                        new Date()
-                      )
-                    : false;
 
                 const cardColorClasses =
                   isWork && jobColor
@@ -222,7 +211,7 @@ export function DesktopWeekGrid({
                       </div>
                     )}
 
-                    {(hasOverlap || isCompleted || isPastUnconfirmed) && (
+                    {(hasOverlap || isCompleted) && (
                       <div className="flex items-center gap-1 flex-wrap pt-0.5">
                         {hasOverlap && (
                           <span className="inline-flex items-center gap-0.5 rounded-lg bg-rose-100 px-1.5 py-0.5 text-[9.5px] font-bold text-rose-700">
@@ -234,12 +223,6 @@ export function DesktopWeekGrid({
                           <span className="inline-flex items-center gap-0.5 rounded-lg bg-[#ECF7E4] px-1.5 py-0.5 text-[9.5px] font-bold text-[#276723] border border-[#C3E5AE]">
                             <CheckCircle2 className="h-2.5 w-2.5" />
                             Đã chốt giờ
-                          </span>
-                        )}
-                        {isPastUnconfirmed && (
-                          <span className="inline-flex items-center gap-0.5 rounded-lg bg-amber-100/90 px-1.5 py-0.5 text-[9.5px] font-bold text-amber-800 border border-amber-300/70">
-                            <Clock className="h-2.5 w-2.5" />
-                            Chờ chốt giờ
                           </span>
                         )}
                       </div>
