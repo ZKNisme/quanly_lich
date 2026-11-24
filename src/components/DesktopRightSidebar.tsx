@@ -408,8 +408,8 @@ export function DesktopRightSidebar({
               <span>Lặp cố định mỗi tuần</span>
             </label>
             {subjRepeat === "weekly" && (
-              <div className="grid grid-cols-2 gap-1.5">
-                <div>
+              <div className="grid grid-cols-1 gap-1.5">
+                <div className="min-w-0">
                   <label className="block text-[10px] font-semibold text-[#231F20]/70 mb-0.5">
                     Từ ngày
                   </label>
@@ -417,10 +417,10 @@ export function DesktopRightSidebar({
                     type="date"
                     value={subjStartDate}
                     onChange={(e) => setSubjStartDate(e.target.value)}
-                    className="w-full rounded-xl border border-sky-200 bg-white px-2 py-1 text-[11px] font-semibold text-[#231F20] tabular-nums"
+                    className="block w-full min-w-0 max-w-full appearance-none rounded-xl border border-sky-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-[#231F20] tabular-nums"
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="block text-[10px] font-semibold text-[#231F20]/70 mb-0.5">
                     Đến ngày
                   </label>
@@ -429,7 +429,7 @@ export function DesktopRightSidebar({
                     min={subjStartDate || undefined}
                     value={subjEndDate}
                     onChange={(e) => setSubjEndDate(e.target.value)}
-                    className="w-full rounded-xl border border-sky-200 bg-white px-2 py-1 text-[11px] font-semibold text-[#231F20] tabular-nums"
+                    className="block w-full min-w-0 max-w-full appearance-none rounded-xl border border-sky-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-[#231F20] tabular-nums"
                   />
                 </div>
               </div>

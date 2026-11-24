@@ -167,8 +167,8 @@ export function SubjectsModal({
                 <span>Lặp cố định hàng tuần</span>
               </label>
               {repeatMode === "weekly" && (
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div className="min-w-0">
                     <label className="block text-[10.5px] font-semibold text-[#231F20]/70 mb-0.5">
                       Từ ngày
                     </label>
@@ -176,10 +176,10 @@ export function SubjectsModal({
                       type="date"
                       value={repeatStartDate}
                       onChange={(e) => setRepeatStartDate(e.target.value)}
-                      className="w-full rounded-xl border border-sky-200 bg-white px-2.5 py-1 text-xs font-semibold text-[#231F20] tabular-nums"
+                      className="block w-full min-w-0 max-w-full appearance-none rounded-xl border border-sky-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-[#231F20] tabular-nums"
                     />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <label className="block text-[10.5px] font-semibold text-[#231F20]/70 mb-0.5">
                       Đến ngày
                     </label>
@@ -188,7 +188,7 @@ export function SubjectsModal({
                       min={repeatStartDate || undefined}
                       value={repeatEndDate}
                       onChange={(e) => setRepeatEndDate(e.target.value)}
-                      className="w-full rounded-xl border border-sky-200 bg-white px-2.5 py-1 text-xs font-semibold text-[#231F20] tabular-nums"
+                      className="block w-full min-w-0 max-w-full appearance-none rounded-xl border border-sky-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-[#231F20] tabular-nums"
                     />
                   </div>
                 </div>

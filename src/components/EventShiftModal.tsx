@@ -887,8 +887,8 @@ export function EventShiftModal({
                   </button>
                 )}
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div className="min-w-0">
                   <label className="block text-[10.5px] font-semibold text-[#231F20]/70 mb-1">
                     Từ ngày
                   </label>
@@ -896,10 +896,10 @@ export function EventShiftModal({
                     type="date"
                     value={repeatStartDate}
                     onChange={(e) => setRepeatStartDate(e.target.value)}
-                    className="w-full rounded-xl border border-orange-200/80 bg-white px-2.5 py-1.5 text-xs font-semibold text-[#231F20] tabular-nums"
+                    className="block w-full min-w-0 max-w-full appearance-none rounded-xl border border-orange-200/80 bg-white px-3 py-2 text-xs font-semibold text-[#231F20] tabular-nums"
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="block text-[10.5px] font-semibold text-[#231F20]/70 mb-1">
                     Đến ngày
                   </label>
@@ -908,7 +908,7 @@ export function EventShiftModal({
                     min={repeatStartDate || undefined}
                     value={repeatEndDate}
                     onChange={(e) => setRepeatEndDate(e.target.value)}
-                    className="w-full rounded-xl border border-orange-200/80 bg-white px-2.5 py-1.5 text-xs font-semibold text-[#231F20] tabular-nums"
+                    className="block w-full min-w-0 max-w-full appearance-none rounded-xl border border-orange-200/80 bg-white px-3 py-2 text-xs font-semibold text-[#231F20] tabular-nums"
                   />
                 </div>
               </div>
