@@ -59,7 +59,7 @@ export function MobileBottomBar({
             }`}
           >
             <Wallet className="h-4 w-4" />
-            <span>Lương & 3 Jobs</span>
+            <span>Lương &amp; Jobs</span>
             {isHydrated && weekIncomeTotal > 0 && (
               <span
                 className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${
