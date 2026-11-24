@@ -8,7 +8,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { BackupResetModal } from "@/components/BackupResetModal";
+import { CopyScheduleModal } from "@/components/CopyScheduleModal";
 import { DesktopRightSidebar } from "@/components/DesktopRightSidebar";
 import { DesktopWeekGrid } from "@/components/DesktopWeekGrid";
 import {
@@ -19,12 +19,9 @@ import { JobColumnModal } from "@/components/JobColumnModal";
 import { MobileBottomBar } from "@/components/MobileBottomBar";
 import { MobileIncomeJobsView } from "@/components/MobileIncomeJobsView";
 import { MobileScheduleView } from "@/components/MobileScheduleView";
-import { MobileShiftCheckerModal } from "@/components/MobileShiftCheckerModal";
+import { ResetWeekModal } from "@/components/ResetWeekModal";
 import { SubjectsModal } from "@/components/SubjectsModal";
-import {
-  type DbSyncStatus,
-  WorkspaceHeader,
-} from "@/components/WorkspaceHeader";
+import { WorkspaceHeader } from "@/components/WorkspaceHeader";
 import {
   formatWeekTitleWithYear,
   getWeekDaysMetaByOffset,
@@ -32,11 +29,7 @@ import {
 } from "@/lib/date-utils";
 import { expandWorkOccurrencesForWeekOffset } from "@/lib/payroll-engine";
 import { createSamplePlannerState } from "@/lib/sample-data";
-import {
-  buildCopyScheduleText,
-  getEventsForWeek,
-  getSuggestedFreeSessions,
-} from "@/lib/schedule-engine";
+import { getEventsForWeek } from "@/lib/schedule-engine";
 import {
   generateId,
   getPlannerServerSnapshot,
@@ -55,7 +48,6 @@ import type {
   RepeatMode,
   ScheduleEvent,
   ShiftOccurrence,
-  ShiftTemplate,
   SubjectPreset,
 } from "@/types/schedule";
 
@@ -76,47 +68,34 @@ export function SchedulePlannerApp() {
   const [mobileTab, setMobileTab] = useState<"schedule" | "income">("schedule");
   const [selectedDay, setSelectedDay] = useState<DayOfWeek>(0);
 
-  // Desktop live Shift Checker highlight
-  const [activeShiftTemplateId, setActiveShiftTemplateId] = useState<
-    string | null
-  >(null);
-
   // Modals
   const [eventDraft, setEventDraft] = useState<EventShiftDraft | null>(null);
   const [jobModalTarget, setJobModalTarget] = useState<
     "new" | JobProfile | null
   >(null);
-  const [showMobileShiftChecker, setShowMobileShiftChecker] = useState(false);
   const [showSubjectsModal, setShowSubjectsModal] = useState(false);
-  const [showBackupModal, setShowBackupModal] = useState(false);
-  const [copiedSchedule, setCopiedSchedule] = useState(false);
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [showCopyModal, setShowCopyModal] = useState(false);
 
   const [toast, setToast] = useState<string | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [dbSyncStatus, setDbSyncStatus] = useState<DbSyncStatus>("syncing");
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const pushStateToNeon = useCallback(async (nextState: PlannerState) => {
     try {
-      const res = await fetch("/api/planner", {
+      await fetch("/api/planner", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ state: nextState }),
       });
-      if (!res.ok) {
-        setDbSyncStatus("offline");
-        return;
-      }
-      setDbSyncStatus("synced");
     } catch {
-      setDbSyncStatus("offline");
+      // Offline / localStorage fallback stays intact
     }
   }, []);
 
   const commitPlannerChange = useCallback(
     (updater: (prev: PlannerState) => PlannerState) => {
       const next = updatePlannerState(updater);
-      setDbSyncStatus("syncing");
       if (syncTimerRef.current) {
         clearTimeout(syncTimerRef.current);
       }
@@ -134,10 +113,7 @@ export function SchedulePlannerApp() {
     async function hydrateFromNeon() {
       try {
         const res = await fetch("/api/planner", { cache: "no-store" });
-        if (!res.ok) {
-          if (!cancelled) setDbSyncStatus("offline");
-          return;
-        }
+        if (!res.ok) return;
         const json = (await res.json()) as {
           exists?: boolean;
           state?: unknown;
@@ -148,7 +124,6 @@ export function SchedulePlannerApp() {
           const parsed = validateAndParseState(JSON.stringify(json.state));
           if (parsed.ok) {
             replacePlannerStateFromRemote(parsed.state);
-            setDbSyncStatus("synced");
             return;
           }
         }
@@ -157,7 +132,7 @@ export function SchedulePlannerApp() {
         const localSnapshot = getPlannerSnapshot();
         await pushStateToNeon(localSnapshot);
       } catch {
-        if (!cancelled) setDbSyncStatus("offline");
+        // Offline fallback stays on localStorage
       }
     }
 
@@ -217,11 +192,6 @@ export function SchedulePlannerApp() {
     };
   }, [state.events, state.jobs, weekOffset]);
 
-  const suggestedFreeSessions = useMemo(
-    () => getSuggestedFreeSessions(weekEvents, 4),
-    [weekEvents]
-  );
-
   const resettableCount = useMemo(
     () =>
       state.events.filter(
@@ -230,31 +200,9 @@ export function SchedulePlannerApp() {
     [state.events, activeWeekKey]
   );
 
-  const activeShiftTemplate = useMemo(
-    () =>
-      state.shiftTemplates.find((t) => t.id === activeShiftTemplateId) ?? null,
-    [state.shiftTemplates, activeShiftTemplateId]
-  );
-
-  const handleCopySchedule = async () => {
-    const text = buildCopyScheduleText(
-      weekEvents,
-      state.jobs,
-      weekDaysMeta,
-      weekTitle
-    );
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopiedSchedule(true);
-      showToast("Đã copy lịch chốt tuần để gửi quản lý!");
-      setTimeout(() => setCopiedSchedule(false), 2200);
-    } catch {
-      showToast("Trình duyệt không cho phép copy tự động");
-    }
-  };
-
   const handleSaveEvent = (payload: {
     id?: string;
+    applyToIsoDate?: string;
     title: string;
     category: EventCategory;
     dayOfWeek: DayOfWeek;
@@ -264,9 +212,14 @@ export function SchedulePlannerApp() {
     note: string;
     repeatMode: RepeatMode;
     weekKey: string | null;
+    repeatStartDate?: string | null;
+    repeatEndDate?: string | null;
     jobId?: string;
     breakMinutes?: number;
+    breakStartTime?: string;
+    breakEndTime?: string;
     isHoliday?: boolean;
+    holidayMultiplier?: number;
     bonusAmount?: number;
     deductionAmount?: number;
     isCompleted?: boolean;
@@ -277,7 +230,10 @@ export function SchedulePlannerApp() {
           ? {
               jobId: payload.jobId ?? prev.jobs[0]?.id,
               breakMinutes: payload.breakMinutes ?? 0,
+              breakStartTime: payload.breakStartTime,
+              breakEndTime: payload.breakEndTime,
               isHoliday: Boolean(payload.isHoliday),
+              holidayMultiplier: payload.holidayMultiplier,
               bonusAmount: payload.bonusAmount ?? 0,
               deductionAmount: payload.deductionAmount ?? 0,
               isCompleted: Boolean(payload.isCompleted),
@@ -285,7 +241,10 @@ export function SchedulePlannerApp() {
           : {
               jobId: undefined,
               breakMinutes: undefined,
+              breakStartTime: undefined,
+              breakEndTime: undefined,
               isHoliday: undefined,
+              holidayMultiplier: undefined,
               bonusAmount: undefined,
               deductionAmount: undefined,
               isCompleted: undefined,
@@ -294,23 +253,75 @@ export function SchedulePlannerApp() {
       if (payload.id) {
         return {
           ...prev,
-          events: prev.events.map((ev) =>
-            ev.id === payload.id
-              ? {
-                  ...ev,
-                  title: payload.title,
-                  category: payload.category,
-                  dayOfWeek: payload.dayOfWeek,
-                  startTime: payload.startTime,
-                  endTime: payload.endTime,
-                  isOvernight: payload.isOvernight,
-                  note: payload.note,
-                  repeatMode: payload.repeatMode,
-                  weekKey: payload.weekKey,
-                  ...workExtras,
-                }
-              : ev
-          ),
+          events: prev.events.map((ev) => {
+            if (ev.id !== payload.id) return ev;
+
+            if (
+              payload.applyToIsoDate &&
+              payload.category === "work" &&
+              ev.repeatMode === "weekly" &&
+              payload.repeatMode === "weekly"
+            ) {
+              const isoDate = payload.applyToIsoDate;
+              const nextCompletedDates = new Set(ev.completedDates ?? []);
+              if (payload.isCompleted) {
+                nextCompletedDates.add(isoDate);
+              } else {
+                nextCompletedDates.delete(isoDate);
+              }
+
+              return {
+                ...ev,
+                title: payload.title,
+                note: payload.note,
+                jobId: payload.jobId ?? ev.jobId ?? prev.jobs[0]?.id,
+                completedDates: Array.from(nextCompletedDates),
+                actualLogs: {
+                  ...(ev.actualLogs ?? {}),
+                  [isoDate]: {
+                    startTime: payload.startTime,
+                    endTime: payload.endTime,
+                    ...(payload.isOvernight ? { isOvernight: true } : {}),
+                    breakMinutes: payload.breakMinutes ?? 0,
+                    ...(payload.breakStartTime && payload.breakEndTime
+                      ? {
+                          breakStartTime: payload.breakStartTime,
+                          breakEndTime: payload.breakEndTime,
+                        }
+                      : {}),
+                    isHoliday: Boolean(payload.isHoliday),
+                    ...(payload.holidayMultiplier
+                      ? { holidayMultiplier: payload.holidayMultiplier }
+                      : {}),
+                    bonusAmount: payload.bonusAmount ?? 0,
+                    deductionAmount: payload.deductionAmount ?? 0,
+                  },
+                },
+              };
+            }
+
+            return {
+              ...ev,
+              title: payload.title,
+              category: payload.category,
+              dayOfWeek: payload.dayOfWeek,
+              startTime: payload.startTime,
+              endTime: payload.endTime,
+              isOvernight: payload.isOvernight,
+              note: payload.note,
+              repeatMode: payload.repeatMode,
+              weekKey: payload.weekKey,
+              repeatStartDate:
+                payload.repeatMode === "weekly"
+                  ? (payload.repeatStartDate ?? null)
+                  : null,
+              repeatEndDate:
+                payload.repeatMode === "weekly"
+                  ? (payload.repeatEndDate ?? null)
+                  : null,
+              ...workExtras,
+            };
+          }),
         };
       }
 
@@ -325,6 +336,12 @@ export function SchedulePlannerApp() {
         note: payload.note,
         repeatMode: payload.repeatMode,
         weekKey: payload.weekKey,
+        ...(payload.repeatMode === "weekly" && payload.repeatStartDate
+          ? { repeatStartDate: payload.repeatStartDate }
+          : {}),
+        ...(payload.repeatMode === "weekly" && payload.repeatEndDate
+          ? { repeatEndDate: payload.repeatEndDate }
+          : {}),
         createdAt: Date.now(),
         ...workExtras,
       };
@@ -337,7 +354,13 @@ export function SchedulePlannerApp() {
 
     setSelectedDay(payload.dayOfWeek);
     setEventDraft(null);
-    showToast(payload.id ? "Đã cập nhật lịch trình" : "Đã thêm lịch mới");
+    showToast(
+      payload.category === "work" && payload.isCompleted
+        ? "Đã cập nhật giờ thực tế & chốt lương ca!"
+        : payload.id
+          ? "Đã cập nhật lịch trình"
+          : "Đã thêm lịch mới"
+    );
   };
 
   const handleDeleteEvent = (eventId: string) => {
@@ -347,35 +370,6 @@ export function SchedulePlannerApp() {
     }));
     setEventDraft(null);
     showToast("Đã xóa lịch trình");
-  };
-
-  const handleCommitShiftsFromTemplate = (
-    template: ShiftTemplate,
-    days: DayOfWeek[]
-  ) => {
-    const jobId = template.jobId ?? state.jobs[0]?.id;
-    const newEvents: ScheduleEvent[] = days.map((day, idx) => ({
-      id: generateId("work"),
-      title: template.name,
-      category: "work",
-      dayOfWeek: day,
-      startTime: template.startTime,
-      endTime: template.endTime,
-      isOvernight: template.isOvernight,
-      note: template.note,
-      repeatMode: "once",
-      weekKey: activeWeekKey,
-      createdAt: Date.now() + idx,
-      jobId,
-      breakMinutes: template.breakMinutes ?? 0,
-    }));
-
-    commitPlannerChange((prev) => ({
-      ...prev,
-      events: [...prev.events, ...newEvents],
-    }));
-
-    showToast(`Đã chốt ${newEvents.length} ca "${template.name}"!`);
   };
 
   const handleAddSubject = (subject: Omit<SubjectPreset, "id">) => {
@@ -413,6 +407,12 @@ export function SchedulePlannerApp() {
       note: subject.note,
       repeatMode: subject.repeatMode,
       weekKey: subject.repeatMode === "weekly" ? null : activeWeekKey,
+      ...(subject.repeatMode === "weekly" && subject.repeatStartDate
+        ? { repeatStartDate: subject.repeatStartDate }
+        : {}),
+      ...(subject.repeatMode === "weekly" && subject.repeatEndDate
+        ? { repeatEndDate: subject.repeatEndDate }
+        : {}),
       createdAt: Date.now() + idx,
     }));
 
@@ -472,7 +472,6 @@ export function SchedulePlannerApp() {
   };
 
   const handleToggleOccurrenceCompleted = (occ: ShiftOccurrence) => {
-    if (occ.isAutoCompletedByTime) return;
     commitPlannerChange((prev) => ({
       ...prev,
       events: prev.events.map((ev) => {
@@ -492,8 +491,8 @@ export function SchedulePlannerApp() {
     }));
     showToast(
       occ.isCompleted
-        ? "Đã bỏ đánh dấu hoàn thành"
-        : "Đã xác nhận hoàn thành ca"
+        ? "Đã chuyển ca về trạng thái Dự kiến"
+        : "Đã chốt giờ thực tế cho ca làm!"
     );
   };
 
@@ -517,7 +516,7 @@ export function SchedulePlannerApp() {
         return true;
       }),
     }));
-    setShowBackupModal(false);
+    setShowResetModal(false);
     showToast("Đã reset tuần mới, giữ lại lịch học cố định!");
   };
 
@@ -529,19 +528,8 @@ export function SchedulePlannerApp() {
         onNextWeek={() => setWeekOffset((w) => w + 1)}
         onResetToTodayWeek={() => setWeekOffset(0)}
         weekTitle={weekTitle}
-        weekShiftCount={weekWorkSummary.shiftCount}
-        weekPaidMinutes={weekWorkSummary.totalPaidMinutes}
-        weekProjectedIncome={weekWorkSummary.totalIncome}
-        suggestedFreeSessions={suggestedFreeSessions}
-        copiedSchedule={copiedSchedule}
-        onCopySchedule={handleCopySchedule}
-        onOpenBackupModal={() => setShowBackupModal(true)}
+        onOpenResetModal={() => setShowResetModal(true)}
         resettableCount={resettableCount}
-        dbSyncStatus={dbSyncStatus}
-        onRetrySync={() => {
-          setDbSyncStatus("syncing");
-          void pushStateToNeon(getPlannerSnapshot());
-        }}
         isHydrated={isHydrated}
       />
 
@@ -553,7 +541,6 @@ export function SchedulePlannerApp() {
             weekEvents={weekEvents}
             jobs={state.jobs}
             settings={state.settings}
-            activeShiftTemplate={activeShiftTemplate}
             onQuickAddOnDay={(dayOfWeek, startTime, endTime) =>
               setEventDraft({
                 dayOfWeek,
@@ -562,18 +549,18 @@ export function SchedulePlannerApp() {
                 category: startTime ? "work" : "study",
               })
             }
-            onEditEvent={(ev) =>
+            onEditEvent={(ev, isoDate) => {
+              const originalEvent =
+                state.events.find((item) => item.id === ev.id) ?? ev;
               setEventDraft({
-                editingEvent: ev,
-                dayOfWeek: ev.dayOfWeek,
+                editingEvent: originalEvent,
+                occurrenceIsoDate: isoDate,
+                dayOfWeek: originalEvent.dayOfWeek,
                 startTime: ev.startTime,
                 endTime: ev.endTime,
-                category: ev.category,
-              })
-            }
-            onCommitSingleDayShift={(day, tpl) =>
-              handleCommitShiftsFromTemplate(tpl, [day])
-            }
+                category: originalEvent.category,
+              });
+            }}
             isHydrated={isHydrated}
           />
         </div>
@@ -582,13 +569,9 @@ export function SchedulePlannerApp() {
           <DesktopRightSidebar
             weekOffset={weekOffset}
             allEvents={state.events}
-            weekEvents={weekEvents}
             jobs={state.jobs}
-            shiftTemplates={state.shiftTemplates}
             subjects={state.subjects}
             settings={state.settings}
-            activeShiftTemplateId={activeShiftTemplateId}
-            onSelectShiftTemplate={setActiveShiftTemplateId}
             onEditJob={(job) => setJobModalTarget(job)}
             onAddNewJob={() => setJobModalTarget("new")}
             onUpdateMonthlyGoal={(goal) => {
@@ -598,34 +581,10 @@ export function SchedulePlannerApp() {
               }));
               showToast("Đã cập nhật mục tiêu tháng");
             }}
-            onAddTemplate={(tpl) => {
-              const created: ShiftTemplate = {
-                id: generateId("shift"),
-                ...tpl,
-              };
-              commitPlannerChange((prev) => ({
-                ...prev,
-                shiftTemplates: [...prev.shiftTemplates, created],
-              }));
-              showToast(`Đã lưu mẫu "${created.name}"`);
-              return created;
-            }}
-            onDeleteTemplate={(tplId) => {
-              commitPlannerChange((prev) => ({
-                ...prev,
-                shiftTemplates: prev.shiftTemplates.filter(
-                  (t) => t.id !== tplId
-                ),
-              }));
-              if (activeShiftTemplateId === tplId) {
-                setActiveShiftTemplateId(null);
-              }
-              showToast("Đã xóa mẫu ca");
-            }}
-            onCommitValidDaysForTemplate={handleCommitShiftsFromTemplate}
             onAddSubject={handleAddSubject}
             onDeleteSubject={handleDeleteSubject}
             onCommitSubjectDays={handleCommitSubjectDays}
+            onOpenCopyModal={() => setShowCopyModal(true)}
             isHydrated={isHydrated}
           />
         </div>
@@ -641,15 +600,18 @@ export function SchedulePlannerApp() {
             settings={state.settings}
             selectedDay={selectedDay}
             onSelectDay={setSelectedDay}
-            onEditEvent={(ev) =>
+            onEditEvent={(ev, isoDate) => {
+              const originalEvent =
+                state.events.find((item) => item.id === ev.id) ?? ev;
               setEventDraft({
-                editingEvent: ev,
-                dayOfWeek: ev.dayOfWeek,
+                editingEvent: originalEvent,
+                occurrenceIsoDate: isoDate,
+                dayOfWeek: originalEvent.dayOfWeek,
                 startTime: ev.startTime,
                 endTime: ev.endTime,
-                category: ev.category,
-              })
-            }
+                category: originalEvent.category,
+              });
+            }}
             onQuickAddInSlot={(day, startTime, endTime) =>
               setEventDraft({
                 dayOfWeek: day,
@@ -658,8 +620,8 @@ export function SchedulePlannerApp() {
                 category: "work",
               })
             }
-            onOpenMobileShiftChecker={() => setShowMobileShiftChecker(true)}
             onOpenSubjectsModal={() => setShowSubjectsModal(true)}
+            onOpenCopyModal={() => setShowCopyModal(true)}
             isHydrated={isHydrated}
           />
         ) : (
@@ -677,15 +639,18 @@ export function SchedulePlannerApp() {
             onEditJob={(job) => setJobModalTarget(job)}
             onAddNewJob={() => setJobModalTarget("new")}
             onToggleOccurrenceCompleted={handleToggleOccurrenceCompleted}
-            onEditShiftEvent={(ev) =>
+            onEditShiftEvent={(ev, isoDate) => {
+              const originalEvent =
+                state.events.find((item) => item.id === ev.id) ?? ev;
               setEventDraft({
-                editingEvent: ev,
-                dayOfWeek: ev.dayOfWeek,
+                editingEvent: originalEvent,
+                occurrenceIsoDate: isoDate,
+                dayOfWeek: originalEvent.dayOfWeek,
                 startTime: ev.startTime,
                 endTime: ev.endTime,
-                category: ev.category,
-              })
-            }
+                category: originalEvent.category,
+              });
+            }}
             isHydrated={isHydrated}
           />
         )}
@@ -741,17 +706,6 @@ export function SchedulePlannerApp() {
         />
       )}
 
-      {showMobileShiftChecker && (
-        <MobileShiftCheckerModal
-          shiftTemplates={state.shiftTemplates}
-          jobs={state.jobs}
-          weekEvents={weekEvents}
-          weekDaysMeta={weekDaysMeta}
-          onCommitShifts={handleCommitShiftsFromTemplate}
-          onClose={() => setShowMobileShiftChecker(false)}
-        />
-      )}
-
       {showSubjectsModal && (
         <SubjectsModal
           subjects={state.subjects}
@@ -762,19 +716,27 @@ export function SchedulePlannerApp() {
         />
       )}
 
-      {showBackupModal && (
-        <BackupResetModal
-          state={state}
+      {showCopyModal && (
+        <CopyScheduleModal
+          weekEvents={weekEvents}
+          jobs={state.jobs}
+          subjects={state.subjects}
+          weekDaysMeta={weekDaysMeta}
+          weekTitle={weekTitle}
+          onCopied={(msg) => showToast(msg)}
+          onClose={() => setShowCopyModal(false)}
+        />
+      )}
+
+      {showResetModal && (
+        <ResetWeekModal
+          events={state.events}
           weekTitle={weekTitle}
           weekKey={activeWeekKey}
-          onReplaceState={(next: PlannerState, message: string) => {
-            commitPlannerChange(() => next);
-            showToast(message);
-          }}
           onResetCurrentWeek={handleResetCurrentWeek}
           onLoadSampleData={() => {
             commitPlannerChange(() => createSamplePlannerState());
-            setShowBackupModal(false);
+            setShowResetModal(false);
             showToast("Đã khôi phục dữ liệu mẫu");
           }}
           onClearAllData={() => {
@@ -783,10 +745,10 @@ export function SchedulePlannerApp() {
               events: [],
               freeSlots: [],
             }));
-            setShowBackupModal(false);
+            setShowResetModal(false);
             showToast("Đã xóa toàn bộ lịch trình");
           }}
-          onClose={() => setShowBackupModal(false)}
+          onClose={() => setShowResetModal(false)}
         />
       )}
     </div>

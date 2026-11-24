@@ -7,11 +7,9 @@ import {
   MapPin,
   Plus,
   Repeat,
-  Sparkles,
 } from "lucide-react";
 import { formatDurationVi, formatTimeRangeShort } from "@/lib/date-utils";
 import {
-  formatCurrencyVnd,
   formatHoursDecimal,
   JOB_COLOR_STYLES,
 } from "@/lib/job-meta";
@@ -19,19 +17,15 @@ import {
   calculateShiftPay,
   hasShiftEndPassed,
   isOccurrenceManuallyCompleted,
+  resolveEventForDate,
   resolveJobForEvent,
 } from "@/lib/payroll-engine";
-import {
-  buildDayTimeline,
-  checkTimeConflicts,
-  getEventsForDay,
-} from "@/lib/schedule-engine";
+import { buildDayTimeline, getEventsForDay } from "@/lib/schedule-engine";
 import type {
   DayOfWeek,
   JobProfile,
   PlannerSettings,
   ScheduleEvent,
-  ShiftTemplate,
   WeekDayMeta,
 } from "@/types/schedule";
 
@@ -40,14 +34,12 @@ interface DesktopWeekGridProps {
   weekEvents: ScheduleEvent[];
   jobs: JobProfile[];
   settings: PlannerSettings;
-  activeShiftTemplate: ShiftTemplate | null;
   onQuickAddOnDay: (
     dayOfWeek: DayOfWeek,
     startTime?: string,
     endTime?: string
   ) => void;
-  onEditEvent: (event: ScheduleEvent) => void;
-  onCommitSingleDayShift: (dayOfWeek: DayOfWeek, template: ShiftTemplate) => void;
+  onEditEvent: (event: ScheduleEvent, isoDate?: string) => void;
   isHydrated: boolean;
 }
 
@@ -56,48 +48,18 @@ export function DesktopWeekGrid({
   weekEvents,
   jobs,
   settings,
-  activeShiftTemplate,
   onQuickAddOnDay,
   onEditEvent,
-  onCommitSingleDayShift,
   isHydrated,
 }: DesktopWeekGridProps) {
-  const activeTemplateJob = activeShiftTemplate
-    ? jobs.find((j) => j.id === activeShiftTemplate.jobId) ?? jobs[0] ?? null
-    : null;
-
   return (
     <div className="grid grid-cols-7 gap-2.5 items-start">
       {weekDaysMeta.map((dayMeta) => {
-        const dayEvents = getEventsForDay(weekEvents, dayMeta.dayOfWeek);
+        const dayEvents = getEventsForDay(weekEvents, dayMeta.dayOfWeek).map(
+          (ev) => resolveEventForDate(ev, dayMeta.isoDate)
+        );
         const timelineItems = buildDayTimeline(dayEvents, settings);
         const isToday = dayMeta.isToday && isHydrated;
-
-        const templateScan = activeShiftTemplate
-          ? checkTimeConflicts(
-              {
-                dayOfWeek: dayMeta.dayOfWeek,
-                startTime: activeShiftTemplate.startTime,
-                endTime: activeShiftTemplate.endTime,
-              },
-              dayEvents,
-              0
-            )
-          : null;
-
-        const templateDayPay =
-          activeShiftTemplate && activeTemplateJob
-            ? calculateShiftPay(
-                {
-                  startTime: activeShiftTemplate.startTime,
-                  endTime: activeShiftTemplate.endTime,
-                  breakMinutes: activeShiftTemplate.breakMinutes ?? 0,
-                  isOvernight: activeShiftTemplate.isOvernight,
-                },
-                activeTemplateJob,
-                dayMeta.dayOfWeek
-              )
-            : null;
 
         return (
           <div
@@ -105,9 +67,7 @@ export function DesktopWeekGrid({
             className={`rounded-3xl border bg-[#FFFDF9] flex flex-col min-h-[540px] transition ${
               isToday
                 ? "border-[#FF7A00] ring-2 ring-orange-200/70"
-                : templateScan?.status === "ok"
-                  ? "border-[#276723]/50 ring-2 ring-[#C3E5AE]/70"
-                  : "border-orange-200/70"
+                : "border-orange-200/70"
             }`}
           >
             {/* Day Column Header */}
@@ -150,57 +110,6 @@ export function DesktopWeekGrid({
                 <Plus className="h-3.5 w-3.5" />
               </button>
             </div>
-
-            {/* Active "Soi ca nhanh" Ghost Highlight */}
-            {activeShiftTemplate && templateScan && (
-              <div className="p-2 pb-0">
-                {templateScan.status === "ok" ? (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      onCommitSingleDayShift(
-                        dayMeta.dayOfWeek,
-                        activeShiftTemplate
-                      )
-                    }
-                    className="w-full text-left rounded-2xl border border-[#C3E5AE] bg-[#ECF7E4] p-2 text-[#276723] hover:bg-[#dff1d2] transition space-y-1"
-                  >
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="inline-flex items-center gap-1 text-[10px] font-extrabold">
-                        <Sparkles className="h-3 w-3" />
-                        Trống đẹp
-                      </span>
-                      <span className="rounded-lg bg-[#231F20] px-1.5 py-0.5 text-[9.5px] font-bold text-white">
-                        + Chốt
-                      </span>
-                    </div>
-                    <div className="font-mono text-[10.5px] font-bold tabular-nums">
-                      {formatTimeRangeShort(
-                        activeShiftTemplate.startTime,
-                        activeShiftTemplate.endTime,
-                        activeShiftTemplate.isOvernight
-                      )}
-                    </div>
-                    {templateDayPay && (
-                      <div className="text-[10.5px] font-extrabold tabular-nums">
-                        +{formatCurrencyVnd(templateDayPay.totalPay)}
-                      </div>
-                    )}
-                  </button>
-                ) : (
-                  <div className="rounded-2xl border border-rose-200 bg-rose-50/90 p-2 text-rose-700 space-y-0.5">
-                    <div className="flex items-center gap-1 text-[10px] font-extrabold">
-                      <AlertTriangle className="h-3 w-3 shrink-0" />
-                      <span>Trùng lịch</span>
-                    </div>
-                    <p className="text-[9.5px] truncate">
-                      {templateScan.overlaps[0]?.event.title} (
-                      {templateScan.overlaps[0]?.event.startTime})
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
 
             {/* Day Vertical Timeline Items */}
             <div className="p-2 space-y-1.5 flex-1">
@@ -250,14 +159,17 @@ export function DesktopWeekGrid({
                   : null;
                 const isCompleted =
                   isWork && isHydrated
+                    ? isOccurrenceManuallyCompleted(event, dayMeta.isoDate)
+                    : false;
+                const isPastUnconfirmed =
+                  isWork && isHydrated && !isCompleted
                     ? hasShiftEndPassed(
                         dayMeta.isoDate,
                         event.startTime,
                         event.endTime,
                         event.isOvernight,
                         new Date()
-                      ) ||
-                      isOccurrenceManuallyCompleted(event, dayMeta.isoDate)
+                      )
                     : false;
 
                 const cardColorClasses =
@@ -271,7 +183,7 @@ export function DesktopWeekGrid({
                   <button
                     key={event.id}
                     type="button"
-                    onClick={() => onEditEvent(event)}
+                    onClick={() => onEditEvent(event, dayMeta.isoDate)}
                     className={`w-full text-left rounded-2xl border p-2.5 transition space-y-1 ${cardColorClasses} ${
                       hasOverlap ? "ring-2 ring-rose-300 border-rose-400" : ""
                     }`}
@@ -300,9 +212,6 @@ export function DesktopWeekGrid({
                           {formatHoursDecimal(pay.paidMinutes)}
                           {pay.multiplier > 1 ? ` • x${pay.multiplier}` : ""}
                         </span>
-                        <span className="text-[11px] font-extrabold text-[#231F20] tabular-nums">
-                          {formatCurrencyVnd(pay.totalPay)}
-                        </span>
                       </div>
                     )}
 
@@ -313,7 +222,7 @@ export function DesktopWeekGrid({
                       </div>
                     )}
 
-                    {(hasOverlap || isCompleted) && (
+                    {(hasOverlap || isCompleted || isPastUnconfirmed) && (
                       <div className="flex items-center gap-1 flex-wrap pt-0.5">
                         {hasOverlap && (
                           <span className="inline-flex items-center gap-0.5 rounded-lg bg-rose-100 px-1.5 py-0.5 text-[9.5px] font-bold text-rose-700">
@@ -324,7 +233,13 @@ export function DesktopWeekGrid({
                         {isCompleted && (
                           <span className="inline-flex items-center gap-0.5 rounded-lg bg-[#ECF7E4] px-1.5 py-0.5 text-[9.5px] font-bold text-[#276723] border border-[#C3E5AE]">
                             <CheckCircle2 className="h-2.5 w-2.5" />
-                            Đã làm
+                            Đã chốt giờ
+                          </span>
+                        )}
+                        {isPastUnconfirmed && (
+                          <span className="inline-flex items-center gap-0.5 rounded-lg bg-amber-100/90 px-1.5 py-0.5 text-[9.5px] font-bold text-amber-800 border border-amber-300/70">
+                            <Clock className="h-2.5 w-2.5" />
+                            Chờ chốt giờ
                           </span>
                         )}
                       </div>

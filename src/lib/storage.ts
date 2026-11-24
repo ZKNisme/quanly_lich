@@ -8,6 +8,7 @@ import {
   DEFAULT_SUBJECTS,
 } from "@/lib/sample-data";
 import type {
+  ActualShiftLog,
   DayOfWeek,
   EventCategory,
   JobBadgeColor,
@@ -127,7 +128,7 @@ function sanitizeJob(raw: unknown, index: number): JobProfile | null {
   if (!name) return null;
 
   const weekendMultiplier = toNonNegativeNumber(obj.weekendMultiplier, 1);
-  const holidayMultiplier = toNonNegativeNumber(obj.holidayMultiplier, 2);
+  const holidayMultiplier = toNonNegativeNumber(obj.holidayMultiplier, 4);
   const defaultColors: JobBadgeColor[] = ["purple", "amber", "teal"];
 
   return {
@@ -187,6 +188,23 @@ function sanitizeEvent(
     return null;
   }
 
+  const rawRepeatStart =
+    repeatMode === "weekly" &&
+    typeof obj.repeatStartDate === "string" &&
+    /^\d{4}-\d{2}-\d{2}$/.test(obj.repeatStartDate)
+      ? obj.repeatStartDate
+      : null;
+  const rawRepeatEnd =
+    repeatMode === "weekly" &&
+    typeof obj.repeatEndDate === "string" &&
+    /^\d{4}-\d{2}-\d{2}$/.test(obj.repeatEndDate)
+      ? obj.repeatEndDate
+      : null;
+  const validRangeEnd =
+    rawRepeatStart && rawRepeatEnd && rawRepeatEnd < rawRepeatStart
+      ? null
+      : rawRepeatEnd;
+
   const baseEvent: ScheduleEvent = {
     id:
       typeof obj.id === "string" && obj.id.trim()
@@ -201,6 +219,8 @@ function sanitizeEvent(
     note: typeof obj.note === "string" ? obj.note.trim() : "",
     repeatMode,
     weekKey: repeatMode === "weekly" ? null : weekKey,
+    ...(rawRepeatStart ? { repeatStartDate: rawRepeatStart } : {}),
+    ...(validRangeEnd ? { repeatEndDate: validRangeEnd } : {}),
     createdAt:
       typeof obj.createdAt === "number" && Number.isFinite(obj.createdAt)
         ? obj.createdAt
@@ -217,7 +237,23 @@ function sanitizeEvent(
     baseEvent.breakMinutes = Math.round(
       toNonNegativeNumber(obj.breakMinutes, 0)
     );
+    if (
+      typeof obj.breakStartTime === "string" &&
+      /^([01]\d|2[0-3]):([0-5]\d)$/.test(obj.breakStartTime) &&
+      typeof obj.breakEndTime === "string" &&
+      /^([01]\d|2[0-3]):([0-5]\d)$/.test(obj.breakEndTime)
+    ) {
+      baseEvent.breakStartTime = obj.breakStartTime;
+      baseEvent.breakEndTime = obj.breakEndTime;
+    }
     baseEvent.isHoliday = Boolean(obj.isHoliday);
+    if (
+      typeof obj.holidayMultiplier === "number" &&
+      Number.isFinite(obj.holidayMultiplier) &&
+      obj.holidayMultiplier >= 1
+    ) {
+      baseEvent.holidayMultiplier = obj.holidayMultiplier;
+    }
     baseEvent.bonusAmount = Math.round(
       toNonNegativeNumber(obj.bonusAmount, 0)
     );
@@ -233,6 +269,54 @@ function sanitizeEvent(
         (d): d is string =>
           typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d)
       );
+    }
+    if (obj.actualLogs && typeof obj.actualLogs === "object") {
+      const sanitizedLogs: Record<string, ActualShiftLog> = {};
+      for (const [dateKey, rawLog] of Object.entries(
+        obj.actualLogs as Record<string, unknown>
+      )) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey) || !rawLog || typeof rawLog !== "object") {
+          continue;
+        }
+        const logObj = rawLog as Record<string, unknown>;
+        const logStart =
+          typeof logObj.startTime === "string" ? logObj.startTime.trim() : "";
+        const logEnd =
+          typeof logObj.endTime === "string" ? logObj.endTime.trim() : "";
+        const logOvernight =
+          Boolean(logObj.isOvernight) || isOvernightShift(logStart, logEnd);
+        if (!isValidTimeRange(logStart, logEnd, logOvernight)) continue;
+        const hasBreakRange =
+          typeof logObj.breakStartTime === "string" &&
+          /^([01]\d|2[0-3]):([0-5]\d)$/.test(logObj.breakStartTime) &&
+          typeof logObj.breakEndTime === "string" &&
+          /^([01]\d|2[0-3]):([0-5]\d)$/.test(logObj.breakEndTime);
+        sanitizedLogs[dateKey] = {
+          startTime: logStart,
+          endTime: logEnd,
+          ...(logOvernight ? { isOvernight: true } : {}),
+          breakMinutes: Math.round(toNonNegativeNumber(logObj.breakMinutes, 0)),
+          ...(hasBreakRange
+            ? {
+                breakStartTime: logObj.breakStartTime as string,
+                breakEndTime: logObj.breakEndTime as string,
+              }
+            : {}),
+          isHoliday: Boolean(logObj.isHoliday),
+          ...(typeof logObj.holidayMultiplier === "number" &&
+          Number.isFinite(logObj.holidayMultiplier) &&
+          logObj.holidayMultiplier >= 1
+            ? { holidayMultiplier: logObj.holidayMultiplier }
+            : {}),
+          bonusAmount: Math.round(toNonNegativeNumber(logObj.bonusAmount, 0)),
+          deductionAmount: Math.round(
+            toNonNegativeNumber(logObj.deductionAmount, 0)
+          ),
+        };
+      }
+      if (Object.keys(sanitizedLogs).length > 0) {
+        baseEvent.actualLogs = sanitizedLogs;
+      }
     }
   }
 
@@ -281,6 +365,23 @@ function sanitizeSubject(raw: unknown): SubjectPreset | null {
 
   if (!name || !isValidTimeRange(startTime, endTime)) return null;
 
+  const subjRepeatMode = isValidRepeatMode(obj.repeatMode)
+    ? obj.repeatMode
+    : "weekly";
+  const subjStart =
+    subjRepeatMode === "weekly" &&
+    typeof obj.repeatStartDate === "string" &&
+    /^\d{4}-\d{2}-\d{2}$/.test(obj.repeatStartDate)
+      ? obj.repeatStartDate
+      : null;
+  const subjEnd =
+    subjRepeatMode === "weekly" &&
+    typeof obj.repeatEndDate === "string" &&
+    /^\d{4}-\d{2}-\d{2}$/.test(obj.repeatEndDate) &&
+    (!subjStart || obj.repeatEndDate >= subjStart)
+      ? obj.repeatEndDate
+      : null;
+
   return {
     id:
       typeof obj.id === "string" && obj.id.trim()
@@ -290,7 +391,9 @@ function sanitizeSubject(raw: unknown): SubjectPreset | null {
     startTime,
     endTime,
     note: typeof obj.note === "string" ? obj.note.trim() : "",
-    repeatMode: isValidRepeatMode(obj.repeatMode) ? obj.repeatMode : "weekly",
+    repeatMode: subjRepeatMode,
+    ...(subjStart ? { repeatStartDate: subjStart } : {}),
+    ...(subjEnd ? { repeatEndDate: subjEnd } : {}),
   };
 }
 
@@ -305,18 +408,27 @@ function sanitizeSettings(raw: unknown): PlannerSettings {
       ? Math.round(obj.travelBufferMinutes)
       : DEFAULT_SETTINGS.travelBufferMinutes;
 
-  const dayStartTime =
+  const rawStart =
     typeof obj.dayStartTime === "string" &&
     /^([01]\d|2[0-3]):([0-5]\d)$/.test(obj.dayStartTime)
       ? obj.dayStartTime
       : DEFAULT_SETTINGS.dayStartTime;
 
-  const dayEndTime =
+  const rawEnd =
     typeof obj.dayEndTime === "string" &&
-    /^([01]\d|2[0-3]):([0-5]\d)$/.test(obj.dayEndTime) &&
-    isValidTimeRange(dayStartTime, obj.dayEndTime)
+    /^(([01]\d|2[0-3]):([0-5]\d)|24:00)$/.test(obj.dayEndTime) &&
+    isValidTimeRange(rawStart, obj.dayEndTime)
       ? obj.dayEndTime
       : DEFAULT_SETTINGS.dayEndTime;
+
+  // Migrate legacy 07:00 - 22:00 default window to 00:00 - 24:00
+  const isLegacyDefaultWindow = rawStart === "07:00" && rawEnd === "22:00";
+  const dayStartTime = isLegacyDefaultWindow
+    ? DEFAULT_SETTINGS.dayStartTime
+    : rawStart;
+  const dayEndTime = isLegacyDefaultWindow
+    ? DEFAULT_SETTINGS.dayEndTime
+    : rawEnd;
 
   const minFreeGapMinutes =
     typeof obj.minFreeGapMinutes === "number" &&

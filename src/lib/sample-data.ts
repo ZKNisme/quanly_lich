@@ -24,7 +24,7 @@ export const DEFAULT_JOBS: JobProfile[] = [
     rate: 28000,
     allowancePerShift: 0,
     weekendMultiplier: 1,
-    holidayMultiplier: 2,
+    holidayMultiplier: 4,
     defaultSessionTimes: {
       morning: { startTime: "08:00", endTime: "14:00" },
       afternoon: { startTime: "14:00", endTime: "18:00" },
@@ -39,7 +39,7 @@ export const DEFAULT_JOBS: JobProfile[] = [
     rate: 30000,
     allowancePerShift: 0,
     weekendMultiplier: 1,
-    holidayMultiplier: 2,
+    holidayMultiplier: 4,
     defaultSessionTimes: {
       morning: { startTime: "09:00", endTime: "14:00" },
       afternoon: { startTime: "14:00", endTime: "18:00" },
@@ -54,7 +54,7 @@ export const DEFAULT_JOBS: JobProfile[] = [
     rate: 200000,
     allowancePerShift: 0,
     weekendMultiplier: 1,
-    holidayMultiplier: 1.5,
+    holidayMultiplier: 4,
     defaultSessionTimes: {
       morning: { startTime: "08:00", endTime: "10:00" },
       afternoon: { startTime: "14:00", endTime: "16:00" },
@@ -65,8 +65,8 @@ export const DEFAULT_JOBS: JobProfile[] = [
 
 export const DEFAULT_SETTINGS: PlannerSettings = {
   travelBufferMinutes: 0,
-  dayStartTime: "07:00",
-  dayEndTime: "22:00",
+  dayStartTime: "00:00",
+  dayEndTime: "24:00",
   minFreeGapMinutes: 30,
   theme: "light",
   monthlyIncomeGoal: 8000000,

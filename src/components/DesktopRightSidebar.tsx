@@ -6,89 +6,59 @@ import {
   Briefcase,
   CheckCircle2,
   Clock,
+  Copy,
   Pencil,
   Plus,
-  Sparkles,
   Target,
   Trash2,
   Wallet,
 } from "lucide-react";
-import {
-  DAY_SHORT_LABELS,
-  isOvernightShift,
-  isValidTimeRange,
-} from "@/lib/date-utils";
+import { DAY_SHORT_LABELS, isValidTimeRange } from "@/lib/date-utils";
 import { formatCurrencyVnd, JOB_COLOR_STYLES } from "@/lib/job-meta";
-import {
-  calculateShiftPay,
-  computePeriodIncomeSummary,
-} from "@/lib/payroll-engine";
-import { checkTimeConflicts, getEventsForDay } from "@/lib/schedule-engine";
+import { computePeriodIncomeSummary } from "@/lib/payroll-engine";
 import type {
   DayOfWeek,
   JobProfile,
   PlannerSettings,
   RepeatMode,
   ScheduleEvent,
-  ShiftTemplate,
   SubjectPreset,
 } from "@/types/schedule";
 
 interface DesktopRightSidebarProps {
   weekOffset: number;
   allEvents: ScheduleEvent[];
-  weekEvents: ScheduleEvent[];
   jobs: JobProfile[];
-  shiftTemplates: ShiftTemplate[];
   subjects: SubjectPreset[];
   settings: PlannerSettings;
-  activeShiftTemplateId: string | null;
-  onSelectShiftTemplate: (templateId: string | null) => void;
   onEditJob: (job: JobProfile) => void;
   onAddNewJob: () => void;
   onUpdateMonthlyGoal: (goal: number) => void;
-  onAddTemplate: (tpl: Omit<ShiftTemplate, "id">) => ShiftTemplate;
-  onDeleteTemplate: (tplId: string) => void;
-  onCommitValidDaysForTemplate: (
-    tpl: ShiftTemplate,
-    days: DayOfWeek[]
-  ) => void;
   onAddSubject: (subj: Omit<SubjectPreset, "id">) => SubjectPreset;
   onDeleteSubject: (subjId: string) => void;
   onCommitSubjectDays: (subj: SubjectPreset, days: DayOfWeek[]) => void;
+  onOpenCopyModal: () => void;
   isHydrated: boolean;
 }
 
 export function DesktopRightSidebar({
   weekOffset,
   allEvents,
-  weekEvents,
   jobs,
-  shiftTemplates,
   subjects,
   settings,
-  activeShiftTemplateId,
-  onSelectShiftTemplate,
   onEditJob,
   onAddNewJob,
   onUpdateMonthlyGoal,
-  onAddTemplate,
-  onDeleteTemplate,
-  onCommitValidDaysForTemplate,
   onAddSubject,
   onDeleteSubject,
   onCommitSubjectDays,
+  onOpenCopyModal,
   isHydrated,
 }: DesktopRightSidebarProps) {
   const [walletMode, setWalletMode] = useState<"week" | "month">("week");
   const [editingGoal, setEditingGoal] = useState(false);
   const [goalInput, setGoalInput] = useState(String(settings.monthlyIncomeGoal));
-
-  const [addingTemplate, setAddingTemplate] = useState(false);
-  const [tplName, setTplName] = useState("");
-  const [tplStart, setTplStart] = useState("08:00");
-  const [tplEnd, setTplEnd] = useState("12:00");
-  const [tplJobId, setTplJobId] = useState(jobs[0]?.id ?? "");
 
   // Subject quick-add states
   const [addingSubject, setAddingSubject] = useState(false);
@@ -97,6 +67,8 @@ export function DesktopRightSidebar({
   const [subjEnd, setSubjEnd] = useState("19:00");
   const [subjNote, setSubjNote] = useState("");
   const [subjRepeat, setSubjRepeat] = useState<RepeatMode>("weekly");
+  const [subjStartDate, setSubjStartDate] = useState("");
+  const [subjEndDate, setSubjEndDate] = useState("");
   const [activeSubjectId, setActiveSubjectId] = useState<string | null>(
     subjects[0]?.id ?? null
   );
@@ -131,55 +103,10 @@ export function DesktopRightSidebar({
       ? Math.min(100, Math.round((monthSummary.totalAmount / goalValue) * 100))
       : 0;
 
-  const activeTemplate = useMemo(
-    () => shiftTemplates.find((t) => t.id === activeShiftTemplateId) ?? null,
-    [shiftTemplates, activeShiftTemplateId]
-  );
-
-  const validDaysForActiveTemplate = useMemo(() => {
-    if (!activeTemplate) return [];
-    const days: DayOfWeek[] = [];
-    for (let d = 0; d < 7; d++) {
-      const day = d as DayOfWeek;
-      const dayEvents = getEventsForDay(weekEvents, day);
-      const check = checkTimeConflicts(
-        {
-          dayOfWeek: day,
-          startTime: activeTemplate.startTime,
-          endTime: activeTemplate.endTime,
-        },
-        dayEvents,
-        0
-      );
-      if (check.status === "ok") {
-        days.push(day);
-      }
-    }
-    return days;
-  }, [activeTemplate, weekEvents]);
-
   const handleSaveGoal = (e: React.FormEvent) => {
     e.preventDefault();
     onUpdateMonthlyGoal(Math.max(0, Math.round(Number(goalInput) || 0)));
     setEditingGoal(false);
-  };
-
-  const handleCreateTemplate = (e: React.FormEvent) => {
-    e.preventDefault();
-    const overnight = isOvernightShift(tplStart, tplEnd);
-    if (!tplName.trim() || !isValidTimeRange(tplStart, tplEnd, overnight)) return;
-    const created = onAddTemplate({
-      name: tplName.trim(),
-      startTime: tplStart,
-      endTime: tplEnd,
-      isOvernight: overnight,
-      note: "",
-      jobId: tplJobId || jobs[0]?.id,
-      breakMinutes: 0,
-    });
-    setAddingTemplate(false);
-    setTplName("");
-    onSelectShiftTemplate(created.id);
   };
 
   return (
@@ -236,7 +163,7 @@ export function DesktopRightSidebar({
                 : "0đ"}
             </p>
             <span className="text-[10px] text-[#276723] tabular-nums">
-              {shownSummary.completedCount} ca đã làm
+              {shownSummary.completedCount} ca đã chốt giờ
             </span>
           </div>
 
@@ -254,10 +181,21 @@ export function DesktopRightSidebar({
                 : "0đ"}
             </p>
             <span className="text-[10px] text-sky-800/80 tabular-nums">
-              {shownSummary.upcomingCount} ca sắp làm
+              {shownSummary.upcomingCount} ca theo lịch
             </span>
           </div>
         </div>
+
+        {isHydrated && shownSummary.unconfirmedPastCount > 0 && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50/85 px-3 py-2 text-[11px] font-semibold text-amber-900">
+            Có{" "}
+            <strong className="tabular-nums">
+              {shownSummary.unconfirmedPastCount} ca
+            </strong>{" "}
+            đã qua giờ lịch — bấm vào ca để sửa giờ làm thực tế &amp; chốt
+            lương.
+          </div>
+        )}
 
         {/* Monthly Goal Bar (Bánh Bao Nhím Striped Orange-Cream) */}
         <div className="pt-1.5 space-y-1.5 border-t border-orange-100">
@@ -372,169 +310,7 @@ export function DesktopRightSidebar({
         </div>
       </div>
 
-      {/* Card 3: Công cụ "Soi ca nhanh" */}
-      <div className="rounded-3xl border border-orange-200/70 bg-[#FFFDF9] p-4 space-y-3">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5">
-            <Sparkles className="h-4 w-4 text-[#FF7A00]" />
-            <h2 className="text-sm font-extrabold text-[#231F20]">
-              Soi ca nhanh
-            </h2>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setAddingTemplate((prev) => !prev)}
-            className="inline-flex items-center gap-1 rounded-xl border border-orange-200/80 bg-white px-2.5 py-1 text-[11px] font-bold text-[#231F20] hover:bg-orange-50"
-          >
-            <Plus className="h-3 w-3" />
-            <span>Mẫu ca</span>
-          </button>
-        </div>
-
-        {addingTemplate && (
-          <form
-            onSubmit={handleCreateTemplate}
-            className="rounded-2xl border border-orange-200 bg-orange-50/50 p-2.5 space-y-2"
-          >
-            <input
-              type="text"
-              required
-              value={tplName}
-              onChange={(e) => setTplName(e.target.value)}
-              placeholder="Tên mẫu (VD: Ca Sáng 8-12)"
-              className="w-full rounded-xl border border-orange-200 bg-[#FFFDF9] px-2.5 py-1.5 text-xs font-semibold text-[#231F20]"
-            />
-            <div className="grid grid-cols-2 gap-1.5">
-              <input
-                type="time"
-                value={tplStart}
-                onChange={(e) => setTplStart(e.target.value)}
-                className="rounded-xl border border-orange-200 bg-[#FFFDF9] px-2 py-1 font-mono text-xs font-bold text-[#231F20]"
-              />
-              <input
-                type="time"
-                value={tplEnd}
-                onChange={(e) => setTplEnd(e.target.value)}
-                className="rounded-xl border border-orange-200 bg-[#FFFDF9] px-2 py-1 font-mono text-xs font-bold text-[#231F20]"
-              />
-            </div>
-            <select
-              value={tplJobId}
-              onChange={(e) => setTplJobId(e.target.value)}
-              className="w-full rounded-xl border border-orange-200 bg-[#FFFDF9] px-2 py-1.5 text-xs font-semibold text-[#231F20]"
-            >
-              {jobs.map((j) => (
-                <option key={j.id} value={j.id}>
-                  {j.name}
-                </option>
-              ))}
-            </select>
-            <button
-              type="submit"
-              className="w-full rounded-xl bg-[#FF7A00] py-1.5 text-xs font-bold text-white"
-            >
-              Lưu mẫu ca
-            </button>
-          </form>
-        )}
-
-        <div className="space-y-1.5">
-          {shiftTemplates.map((tpl) => {
-            const isSelected = activeShiftTemplateId === tpl.id;
-            const tplJob =
-              jobs.find((j) => j.id === tpl.jobId) ?? jobs[0] ?? null;
-            const pay = calculateShiftPay(
-              {
-                startTime: tpl.startTime,
-                endTime: tpl.endTime,
-                isOvernight: tpl.isOvernight,
-                breakMinutes: tpl.breakMinutes ?? 0,
-              },
-              tplJob,
-              0
-            );
-
-            return (
-              <div
-                key={tpl.id}
-                className={`flex items-center justify-between gap-1.5 rounded-2xl border p-2.5 transition ${
-                  isSelected
-                    ? "border-[#FF7A00] bg-orange-50/90 ring-1 ring-orange-200"
-                    : "border-orange-200/60 bg-white hover:bg-orange-50/40"
-                }`}
-              >
-                <button
-                  type="button"
-                  onClick={() =>
-                    onSelectShiftTemplate(isSelected ? null : tpl.id)
-                  }
-                  className="flex-1 text-left min-w-0"
-                >
-                  <div className="flex items-center justify-between gap-1">
-                    <span className="text-xs font-extrabold text-[#231F20] truncate">
-                      {tpl.name}
-                    </span>
-                    <span className="font-mono text-[10.5px] font-bold text-[#231F20]/70 tabular-nums shrink-0">
-                      {tpl.startTime}–{tpl.endTime}
-                    </span>
-                  </div>
-                  <div className="mt-0.5 flex items-center justify-between text-[10.5px] text-[#231F20]/65">
-                    <span className="truncate">{tplJob?.name}</span>
-                    <span className="font-extrabold text-[#FF7A00] tabular-nums">
-                      ~{formatCurrencyVnd(pay.totalPay)}
-                    </span>
-                  </div>
-                </button>
-
-                {shiftTemplates.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => onDeleteTemplate(tpl.id)}
-                    aria-label={`Xóa ${tpl.name}`}
-                    className="p-1 rounded-lg text-[#231F20]/40 hover:bg-rose-50 hover:text-rose-600 shrink-0"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        {activeTemplate && (
-          <div className="rounded-2xl border border-[#C3E5AE] bg-[#ECF7E4] p-2.5 space-y-2">
-            <div className="flex items-center justify-between text-[11px] font-bold text-[#276723]">
-              <span>
-                Tìm thấy {validDaysForActiveTemplate.length}/7 ngày trống
-              </span>
-              <button
-                type="button"
-                onClick={() => onSelectShiftTemplate(null)}
-                className="underline text-[#231F20]"
-              >
-                Tắt soi
-              </button>
-            </div>
-            {validDaysForActiveTemplate.length > 0 && (
-              <button
-                type="button"
-                onClick={() =>
-                  onCommitValidDaysForTemplate(
-                    activeTemplate,
-                    validDaysForActiveTemplate
-                  )
-                }
-                className="w-full rounded-2xl bg-[#FF7A00] py-2 text-xs font-bold text-white hover:bg-orange-600 transition"
-              >
-                Chốt nhanh {validDaysForActiveTemplate.length} ngày hợp lệ
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Card 4: Thêm Môn học (Xếp lịch nhanh) */}
+      {/* Card 3: Thêm Môn học (Xếp lịch nhanh) */}
       <div className="rounded-3xl border border-orange-200/70 bg-[#FFFDF9] p-4 space-y-3">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5">
@@ -558,7 +334,16 @@ export function DesktopRightSidebar({
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              if (!subjName.trim() || !isValidTimeRange(subjStart, subjEnd))
+              const subjDatesValid =
+                subjRepeat !== "weekly" ||
+                !subjStartDate ||
+                !subjEndDate ||
+                subjEndDate >= subjStartDate;
+              if (
+                !subjName.trim() ||
+                !isValidTimeRange(subjStart, subjEnd) ||
+                !subjDatesValid
+              )
                 return;
               const created = onAddSubject({
                 name: subjName.trim(),
@@ -566,10 +351,18 @@ export function DesktopRightSidebar({
                 endTime: subjEnd,
                 note: subjNote.trim(),
                 repeatMode: subjRepeat,
+                repeatStartDate:
+                  subjRepeat === "weekly" && subjStartDate
+                    ? subjStartDate
+                    : null,
+                repeatEndDate:
+                  subjRepeat === "weekly" && subjEndDate ? subjEndDate : null,
               });
               setActiveSubjectId(created.id);
               setSubjName("");
               setSubjNote("");
+              setSubjStartDate("");
+              setSubjEndDate("");
               setAddingSubject(false);
             }}
             className="rounded-2xl border border-sky-200/80 bg-sky-50/50 p-2.5 space-y-2"
@@ -614,9 +407,41 @@ export function DesktopRightSidebar({
               />
               <span>Lặp cố định mỗi tuần</span>
             </label>
+            {subjRepeat === "weekly" && (
+              <div className="grid grid-cols-2 gap-1.5">
+                <div>
+                  <label className="block text-[10px] font-semibold text-[#231F20]/70 mb-0.5">
+                    Từ ngày
+                  </label>
+                  <input
+                    type="date"
+                    value={subjStartDate}
+                    onChange={(e) => setSubjStartDate(e.target.value)}
+                    className="w-full rounded-xl border border-sky-200 bg-white px-2 py-1 text-[11px] font-semibold text-[#231F20] tabular-nums"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-[#231F20]/70 mb-0.5">
+                    Đến ngày
+                  </label>
+                  <input
+                    type="date"
+                    min={subjStartDate || undefined}
+                    value={subjEndDate}
+                    onChange={(e) => setSubjEndDate(e.target.value)}
+                    className="w-full rounded-xl border border-sky-200 bg-white px-2 py-1 text-[11px] font-semibold text-[#231F20] tabular-nums"
+                  />
+                </div>
+              </div>
+            )}
             <button
               type="submit"
-              disabled={!subjName.trim() || !isValidTimeRange(subjStart, subjEnd)}
+              disabled={
+                !subjName.trim() ||
+                !isValidTimeRange(subjStart, subjEnd) ||
+                (subjRepeat === "weekly" &&
+                  Boolean(subjStartDate && subjEndDate && subjEndDate < subjStartDate))
+              }
               className="w-full rounded-xl bg-[#231F20] py-1.5 text-xs font-bold text-white disabled:opacity-40"
             >
               Lưu môn
@@ -712,6 +537,15 @@ export function DesktopRightSidebar({
           })}
         </div>
       </div>
+
+      <button
+        type="button"
+        onClick={onOpenCopyModal}
+        className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-[#231F20] px-4 py-3 text-xs font-bold text-[#FFFDF9] hover:bg-black active:scale-[0.99] transition"
+      >
+        <Copy className="h-4 w-4 text-[#FF7A00]" />
+        <span>Copy lịch chốt</span>
+      </button>
     </aside>
   );
 }

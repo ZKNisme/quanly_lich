@@ -49,6 +49,19 @@ export interface JobProfile {
   defaultSessionTimes: JobDefaultSessionTimes;
 }
 
+export interface ActualShiftLog {
+  startTime: string;
+  endTime: string;
+  isOvernight?: boolean;
+  breakMinutes?: number;
+  breakStartTime?: string;
+  breakEndTime?: string;
+  isHoliday?: boolean;
+  holidayMultiplier?: number;
+  bonusAmount?: number;
+  deductionAmount?: number;
+}
+
 export interface ScheduleEvent {
   id: string;
   title: string;
@@ -64,17 +77,26 @@ export interface ScheduleEvent {
   repeatMode: RepeatMode;
   /** ISO Monday date string "YYYY-MM-DD" when repeatMode === "once", null when "weekly" */
   weekKey: string | null;
+  /** Optional inclusive ISO start date ("YYYY-MM-DD") when repeatMode === "weekly" */
+  repeatStartDate?: string | null;
+  /** Optional inclusive ISO end date ("YYYY-MM-DD") when repeatMode === "weekly" */
+  repeatEndDate?: string | null;
   createdAt: number;
   /** Work shift fields */
   jobId?: string;
   sessionKey?: SessionKey;
   breakMinutes?: number;
+  breakStartTime?: string;
+  breakEndTime?: string;
   isHoliday?: boolean;
+  holidayMultiplier?: number;
   bonusAmount?: number;
   deductionAmount?: number;
   adjustmentNote?: string;
   isCompleted?: boolean;
   completedDates?: string[];
+  /** Actual hours/pay overrides per ISO date ("YYYY-MM-DD") for weekly recurring shifts */
+  actualLogs?: Record<string, ActualShiftLog>;
 }
 
 export interface ShiftTemplate {
@@ -95,6 +117,8 @@ export interface SubjectPreset {
   endTime: string;
   note: string;
   repeatMode: RepeatMode;
+  repeatStartDate?: string | null;
+  repeatEndDate?: string | null;
 }
 
 export interface PlannerSettings {
@@ -193,7 +217,7 @@ export interface ShiftOccurrence {
   job: JobProfile | null;
   pay: ShiftPayBreakdown;
   isCompleted: boolean;
-  isAutoCompletedByTime: boolean;
+  isPastScheduled: boolean;
 }
 
 export interface JobIncomeSummary {
@@ -217,6 +241,7 @@ export interface PeriodIncomeSummary {
   totalAmount: number;
   completedCount: number;
   upcomingCount: number;
+  unconfirmedPastCount: number;
   totalPaidMinutes: number;
   jobSummaries: JobIncomeSummary[];
 }

@@ -5,6 +5,7 @@ import {
   Briefcase,
   CalendarClock,
   CheckCircle2,
+  Clock,
   Coins,
   Repeat,
   ShieldAlert,
@@ -24,7 +25,11 @@ import {
   formatHoursDecimal,
   JOB_COLOR_STYLES,
 } from "@/lib/job-meta";
-import { calculateShiftPay } from "@/lib/payroll-engine";
+import {
+  calculateShiftPay,
+  formatShortDateFromIso,
+  hasShiftEndPassed,
+} from "@/lib/payroll-engine";
 import { checkTimeConflicts, getEventsForWeek } from "@/lib/schedule-engine";
 import type {
   DayOfWeek,
@@ -37,6 +42,7 @@ import type {
 
 export interface EventShiftDraft {
   editingEvent?: ScheduleEvent;
+  occurrenceIsoDate?: string;
   dayOfWeek: DayOfWeek;
   startTime: string;
   endTime: string;
@@ -52,6 +58,7 @@ interface EventShiftModalProps {
   subjects: SubjectPreset[];
   onSave: (payload: {
     id?: string;
+    applyToIsoDate?: string;
     title: string;
     category: EventCategory;
     dayOfWeek: DayOfWeek;
@@ -61,9 +68,14 @@ interface EventShiftModalProps {
     note: string;
     repeatMode: RepeatMode;
     weekKey: string | null;
+    repeatStartDate?: string | null;
+    repeatEndDate?: string | null;
     jobId?: string;
     breakMinutes?: number;
+    breakStartTime?: string;
+    breakEndTime?: string;
     isHoliday?: boolean;
+    holidayMultiplier?: number;
     bonusAmount?: number;
     deductionAmount?: number;
     isCompleted?: boolean;
@@ -112,6 +124,26 @@ export function EventShiftModal({
   onClose,
 }: EventShiftModalProps) {
   const isEditing = Boolean(initial.editingEvent);
+  const occurrenceIsoDate = initial.occurrenceIsoDate;
+  const isEditingWeeklyOccurrence =
+    isEditing &&
+    initial.editingEvent?.repeatMode === "weekly" &&
+    Boolean(occurrenceIsoDate);
+  const actualLogForDate =
+    isEditingWeeklyOccurrence && occurrenceIsoDate
+      ? initial.editingEvent?.actualLogs?.[occurrenceIsoDate]
+      : undefined;
+
+  const initialStartTime =
+    actualLogForDate?.startTime ??
+    initial.editingEvent?.startTime ??
+    initial.startTime;
+  const rawInitialEndTime =
+    actualLogForDate?.endTime ??
+    initial.editingEvent?.endTime ??
+    initial.endTime;
+  const initialEndTime =
+    rawInitialEndTime === "24:00" ? "23:59" : rawInitialEndTime;
 
   const [category, setCategory] = useState<EventCategory>(
     initial.editingEvent?.category ?? initial.category ?? "work"
@@ -120,44 +152,63 @@ export function EventShiftModal({
   const [dayOfWeek, setDayOfWeek] = useState<DayOfWeek>(
     initial.editingEvent?.dayOfWeek ?? initial.dayOfWeek
   );
-  const [startTime, setStartTime] = useState(
-    initial.editingEvent?.startTime ?? initial.startTime
-  );
-  const [endTime, setEndTime] = useState(
-    initial.editingEvent?.endTime ?? initial.endTime
-  );
+  const [startTime, setStartTime] = useState(initialStartTime);
+  const [endTime, setEndTime] = useState(initialEndTime);
   const [isOvernight, setIsOvernight] = useState<boolean>(
-    initial.editingEvent?.isOvernight ??
-      isOvernightShift(
-        initial.editingEvent?.startTime ?? initial.startTime,
-        initial.editingEvent?.endTime ?? initial.endTime
-      )
+    actualLogForDate?.isOvernight ??
+      initial.editingEvent?.isOvernight ??
+      isOvernightShift(initialStartTime, initialEndTime)
   );
   const [note, setNote] = useState(initial.editingEvent?.note ?? "");
   const [repeatMode, setRepeatMode] = useState<RepeatMode>(
     initial.editingEvent?.repeatMode ??
       ((initial.category ?? "work") === "study" ? "weekly" : "once")
   );
+  const [repeatStartDate, setRepeatStartDate] = useState(
+    initial.editingEvent?.repeatStartDate ?? ""
+  );
+  const [repeatEndDate, setRepeatEndDate] = useState(
+    initial.editingEvent?.repeatEndDate ?? ""
+  );
   const [touchedRepeat, setTouchedRepeat] = useState(isEditing);
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const [applyScope, setApplyScope] = useState<"single_date" | "all_weekly">(
+    isEditingWeeklyOccurrence ? "single_date" : "all_weekly"
+  );
 
   const [jobId, setJobId] = useState(
     initial.editingEvent?.jobId ?? jobs[0]?.id ?? ""
   );
   const [breakMinutes, setBreakMinutes] = useState(
-    initial.editingEvent?.breakMinutes ?? 0
+    actualLogForDate?.breakMinutes ?? initial.editingEvent?.breakMinutes ?? 0
   );
   const [isHoliday, setIsHoliday] = useState(
-    initial.editingEvent?.isHoliday ?? false
+    actualLogForDate?.isHoliday ?? initial.editingEvent?.isHoliday ?? false
+  );
+  const [holidayMultiplier, setHolidayMultiplier] = useState<number>(
+    actualLogForDate?.holidayMultiplier ??
+      initial.editingEvent?.holidayMultiplier ??
+      4
   );
   const [bonusAmount, setBonusAmount] = useState(
-    String(initial.editingEvent?.bonusAmount ?? 0)
+    String(
+      actualLogForDate?.bonusAmount ?? initial.editingEvent?.bonusAmount ?? 0
+    )
   );
   const [deductionAmount, setDeductionAmount] = useState(
-    String(initial.editingEvent?.deductionAmount ?? 0)
+    String(
+      actualLogForDate?.deductionAmount ??
+        initial.editingEvent?.deductionAmount ??
+        0
+    )
   );
   const [isCompleted, setIsCompleted] = useState(
-    initial.editingEvent?.isCompleted ?? false
+    isEditingWeeklyOccurrence && occurrenceIsoDate
+      ? Boolean(
+          initial.editingEvent?.completedDates?.includes(occurrenceIsoDate)
+        )
+      : (initial.editingEvent?.isCompleted ?? false)
   );
 
   const selectedJob = useMemo(
@@ -165,9 +216,13 @@ export function EventShiftModal({
     [jobs, jobId]
   );
 
-  const effectiveOvernight =
-    isOvernight || timeToMinutes(endTime) < timeToMinutes(startTime);
+  const effectiveOvernight = isOvernight;
   const timeValid = isValidTimeRange(startTime, endTime, effectiveOvernight);
+  const repeatDateValid =
+    repeatMode !== "weekly" ||
+    !repeatStartDate ||
+    !repeatEndDate ||
+    repeatEndDate >= repeatStartDate;
   const durationMinutes = timeValid
     ? getDurationMinutes(startTime, endTime, effectiveOvernight)
     : 0;
@@ -181,6 +236,7 @@ export function EventShiftModal({
         isOvernight: effectiveOvernight,
         breakMinutes,
         isHoliday,
+        holidayMultiplier,
         bonusAmount: Math.max(0, Number(bonusAmount) || 0),
         deductionAmount: Math.max(0, Number(deductionAmount) || 0),
       },
@@ -195,6 +251,7 @@ export function EventShiftModal({
     effectiveOvernight,
     breakMinutes,
     isHoliday,
+    holidayMultiplier,
     bonusAmount,
     deductionAmount,
     selectedJob,
@@ -251,7 +308,7 @@ export function EventShiftModal({
     e.preventDefault();
     const cleanTitle =
       title.trim() || (category === "work" && selectedJob ? selectedJob.name : "");
-    if (!cleanTitle || !timeValid) return;
+    if (!cleanTitle || !timeValid || !repeatDateValid) return;
 
     const preservedOnceKey =
       initial.editingEvent?.repeatMode === "once" &&
@@ -259,8 +316,16 @@ export function EventShiftModal({
         ? initial.editingEvent.weekKey
         : activeWeekKey;
 
+    const isSingleWeeklyEdit =
+      isEditingWeeklyOccurrence &&
+      category === "work" &&
+      repeatMode === "weekly" &&
+      applyScope === "single_date" &&
+      Boolean(occurrenceIsoDate);
+
     onSave({
       id: initial.editingEvent?.id,
+      ...(isSingleWeeklyEdit ? { applyToIsoDate: occurrenceIsoDate } : {}),
       title: cleanTitle,
       category,
       dayOfWeek,
@@ -270,11 +335,16 @@ export function EventShiftModal({
       note: note.trim(),
       repeatMode,
       weekKey: repeatMode === "weekly" ? null : preservedOnceKey,
+      repeatStartDate:
+        repeatMode === "weekly" && repeatStartDate ? repeatStartDate : null,
+      repeatEndDate:
+        repeatMode === "weekly" && repeatEndDate ? repeatEndDate : null,
       ...(category === "work"
         ? {
             jobId: selectedJob?.id,
             breakMinutes,
             isHoliday,
+            holidayMultiplier,
             bonusAmount: Math.max(0, Math.round(Number(bonusAmount) || 0)),
             deductionAmount: Math.max(
               0,
@@ -287,6 +357,16 @@ export function EventShiftModal({
   };
 
   const hasOverlap = (conflictReport?.primaryCheck.overlaps.length ?? 0) > 0;
+  const isPastOccurrence =
+    isEditing && category === "work" && occurrenceIsoDate
+      ? hasShiftEndPassed(
+          occurrenceIsoDate,
+          startTime,
+          endTime,
+          effectiveOvernight,
+          new Date()
+        )
+      : false;
 
   return (
     <div
@@ -352,6 +432,8 @@ export function EventShiftModal({
                       setIsOvernight(false);
                       setNote(subj.note);
                       setRepeatMode(subj.repeatMode);
+                      setRepeatStartDate(subj.repeatStartDate ?? "");
+                      setRepeatEndDate(subj.repeatEndDate ?? "");
                     }}
                     className={`rounded-xl border px-2.5 py-1 text-xs font-bold transition ${
                       title === subj.name && startTime === subj.startTime
@@ -453,8 +535,22 @@ export function EventShiftModal({
 
           {/* Time Inputs */}
           <div className="space-y-1.5">
+            {isEditing && category === "work" && !isCompleted && (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50/85 px-3 py-2 text-[11px] font-semibold text-amber-900">
+                {isPastOccurrence
+                  ? "Ca này đã qua giờ dự kiến — hãy sửa lại giờ vào/ra thực tế bên dưới rồi chọn Đã làm xong để tính vào Thực nhận."
+                  : "Lịch làm chỉ là dự kiến. Sau khi làm xong, bạn vào sửa lại giờ chính xác bên dưới để chốt lương."}
+              </div>
+            )}
+
             <div className="flex items-center justify-between text-xs">
-              <span className="font-bold text-[#231F20]">Khung giờ</span>
+              <span className="font-bold text-[#231F20]">
+                {category === "work"
+                  ? isCompleted
+                    ? "Giờ làm thực tế"
+                    : "Khung giờ dự kiến"
+                  : "Khung giờ"}
+              </span>
               <span className="font-semibold text-[#231F20]/65 tabular-nums">
                 {timeValid
                   ? `Thời lượng: ${formatDurationVi(durationMinutes)}${effectiveOvernight ? " (hôm sau)" : ""}`
@@ -466,7 +562,13 @@ export function EventShiftModal({
                 type="time"
                 required
                 value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
+                onChange={(e) => {
+                  const nextStart = e.target.value;
+                  setStartTime(nextStart);
+                  setIsOvernight(
+                    timeToMinutes(endTime) < timeToMinutes(nextStart)
+                  );
+                }}
                 className="rounded-2xl border border-orange-200/70 bg-white px-3 py-2 font-mono text-sm font-bold text-[#231F20]"
               />
               <input
@@ -476,9 +578,9 @@ export function EventShiftModal({
                 onChange={(e) => {
                   const nextEnd = e.target.value;
                   setEndTime(nextEnd);
-                  if (timeToMinutes(nextEnd) < timeToMinutes(startTime)) {
-                    setIsOvernight(true);
-                  }
+                  setIsOvernight(
+                    timeToMinutes(nextEnd) < timeToMinutes(startTime)
+                  );
                 }}
                 className="rounded-2xl border border-orange-200/70 bg-white px-3 py-2 font-mono text-sm font-bold text-[#231F20]"
               />
@@ -488,7 +590,7 @@ export function EventShiftModal({
               <label className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#231F20]/80 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={effectiveOvernight}
+                  checked={isOvernight}
                   onChange={(e) => setIsOvernight(e.target.checked)}
                   className="rounded border-orange-300"
                 />
@@ -519,13 +621,81 @@ export function EventShiftModal({
             </div>
           </div>
 
-          {/* Work Shift Bonus/Deduction + Payroll Preview */}
+          {/* Work Shift Status + Bonus/Deduction + Payroll Preview */}
           {category === "work" && (
-            <div className="rounded-2xl border border-[#C3E5AE] bg-[#ECF7E4]/75 p-3 space-y-2.5">
-              <div className="flex items-center justify-between">
+            <div
+              className={`rounded-2xl border p-3 space-y-2.5 transition ${
+                isCompleted
+                  ? "border-[#C3E5AE] bg-[#ECF7E4]/85"
+                  : "border-orange-200/80 bg-orange-50/50"
+              }`}
+            >
+              {/* Status Segmented Toggle: Scheduled vs Confirmed Actual */}
+              <div className="space-y-1.5">
+                <span className="block text-[11px] font-extrabold text-[#231F20]/75">
+                  Trạng thái tính lương
+                </span>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setIsCompleted(false)}
+                    className={`inline-flex items-center justify-center gap-1.5 rounded-xl border py-2 text-[11.5px] font-bold transition ${
+                      !isCompleted
+                        ? "border-[#FF7A00] bg-[#FFFDF9] text-[#231F20] shadow-xs"
+                        : "border-orange-200/60 bg-white/70 text-[#231F20]/60"
+                    }`}
+                  >
+                    <Clock className="h-3.5 w-3.5 text-[#FF7A00]" />
+                    <span>Lịch dự kiến</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsCompleted(true)}
+                    className={`inline-flex items-center justify-center gap-1.5 rounded-xl border py-2 text-[11.5px] font-bold transition ${
+                      isCompleted
+                        ? "border-[#276723] bg-[#276723] text-white shadow-xs"
+                        : "border-[#C3E5AE] bg-white text-[#276723] hover:bg-[#ECF7E4]"
+                    }`}
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    <span>Đã làm &amp; chốt giờ</span>
+                  </button>
+                </div>
+              </div>
+
+              {isEditingWeeklyOccurrence &&
+                occurrenceIsoDate &&
+                repeatMode === "weekly" && (
+                  <div className="grid grid-cols-2 gap-1.5 pt-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setApplyScope("single_date")}
+                      className={`rounded-xl border py-1.5 px-2 text-[11px] font-bold transition ${
+                        applyScope === "single_date"
+                          ? "border-[#231F20] bg-[#231F20] text-white"
+                          : "border-orange-200/70 bg-white text-[#231F20]/70"
+                      }`}
+                    >
+                      Chỉ chốt ngày {formatShortDateFromIso(occurrenceIsoDate)}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setApplyScope("all_weekly")}
+                      className={`rounded-xl border py-1.5 px-2 text-[11px] font-bold transition ${
+                        applyScope === "all_weekly"
+                          ? "border-[#231F20] bg-[#231F20] text-white"
+                          : "border-orange-200/70 bg-white text-[#231F20]/70"
+                      }`}
+                    >
+                      Sửa lịch lặp hàng tuần
+                    </button>
+                  </div>
+                )}
+
+              <div className="flex items-center justify-between pt-0.5">
                 <span className="inline-flex items-center gap-1.5 text-xs font-bold text-[#276723]">
                   <Coins className="h-3.5 w-3.5" />
-                  Thưởng / Phạt & Lương ca
+                  {isCompleted ? "Lương thực nhận ca này" : "Lương dự kiến ca"}
                 </span>
                 {payPreview && (
                   <span className="text-sm font-extrabold text-[#231F20] tabular-nums">
@@ -534,25 +704,26 @@ export function EventShiftModal({
                 )}
               </div>
 
-              <div className="flex items-center justify-between text-[11px]">
+              <div className="flex items-center justify-between gap-2 text-[11px]">
                 <span className="font-semibold text-[#231F20]/75">
                   Nghỉ giữa ca:
                 </span>
-                <div className="inline-flex rounded-xl border border-orange-200/70 bg-[#FFFDF9] p-0.5">
-                  {[0, 15, 30, 60].map((m) => (
-                    <button
-                      key={m}
-                      type="button"
-                      onClick={() => setBreakMinutes(m)}
-                      className={`rounded-lg px-2 py-0.5 font-bold ${
-                        breakMinutes === m
-                          ? "bg-[#231F20] text-[#FFFDF9]"
-                          : "text-[#231F20]/65"
-                      }`}
-                    >
-                      {m}p
-                    </button>
-                  ))}
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="number"
+                    min={0}
+                    max={durationMinutes || 720}
+                    step={1}
+                    value={breakMinutes}
+                    onChange={(e) =>
+                      setBreakMinutes(
+                        Math.max(0, Math.round(Number(e.target.value) || 0))
+                      )
+                    }
+                    aria-label="Số phút nghỉ giữa ca"
+                    className="w-16 rounded-xl border border-orange-200/80 bg-[#FFFDF9] px-2.5 py-1 text-center font-mono text-xs font-bold text-[#231F20]"
+                  />
+                  <span className="font-semibold text-[#231F20]/65">phút</span>
                 </div>
               </div>
 
@@ -593,19 +764,26 @@ export function EventShiftModal({
                     onChange={(e) => setIsHoliday(e.target.checked)}
                     className="rounded border-orange-300"
                   />
-                  <span>Ngày lễ (x{selectedJob?.holidayMultiplier ?? 2})</span>
+                  <span>Ngày lễ (x{holidayMultiplier})</span>
                 </label>
 
-                {repeatMode === "once" && (
-                  <label className="inline-flex items-center gap-1.5 font-semibold text-[#276723] cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={isCompleted}
-                      onChange={(e) => setIsCompleted(e.target.checked)}
-                      className="rounded border-[#C3E5AE]"
-                    />
-                    <span>Đã hoàn thành</span>
-                  </label>
+                {isHoliday && (
+                  <div className="inline-flex rounded-xl border border-rose-200 bg-white p-0.5">
+                    {[2, 3, 4].map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setHolidayMultiplier(m)}
+                        className={`rounded-lg px-2 py-0.5 text-[10.5px] font-bold transition ${
+                          holidayMultiplier === m
+                            ? "bg-rose-600 text-white"
+                            : "text-rose-700 hover:bg-rose-50"
+                        }`}
+                      >
+                        x{m}
+                      </button>
+                    ))}
+                  </div>
                 )}
               </div>
 
@@ -689,6 +867,62 @@ export function EventShiftModal({
               <span className="text-xs font-bold">Chỉ tuần này</span>
             </button>
           </div>
+
+          {repeatMode === "weekly" && (
+            <div className="rounded-2xl border border-orange-200/80 bg-orange-50/50 p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-bold text-[#231F20]">
+                  Khoảng thời gian lặp
+                </span>
+                {(repeatStartDate || repeatEndDate) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRepeatStartDate("");
+                      setRepeatEndDate("");
+                    }}
+                    className="text-[10.5px] font-bold text-[#FF7A00] underline"
+                  >
+                    Xóa ngày
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[10.5px] font-semibold text-[#231F20]/70 mb-1">
+                    Từ ngày
+                  </label>
+                  <input
+                    type="date"
+                    value={repeatStartDate}
+                    onChange={(e) => setRepeatStartDate(e.target.value)}
+                    className="w-full rounded-xl border border-orange-200/80 bg-white px-2.5 py-1.5 text-xs font-semibold text-[#231F20] tabular-nums"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10.5px] font-semibold text-[#231F20]/70 mb-1">
+                    Đến ngày
+                  </label>
+                  <input
+                    type="date"
+                    min={repeatStartDate || undefined}
+                    value={repeatEndDate}
+                    onChange={(e) => setRepeatEndDate(e.target.value)}
+                    className="w-full rounded-xl border border-orange-200/80 bg-white px-2.5 py-1.5 text-xs font-semibold text-[#231F20] tabular-nums"
+                  />
+                </div>
+              </div>
+              {!repeatDateValid ? (
+                <p className="text-[11px] font-bold text-rose-700">
+                  Ngày kết thúc phải sau hoặc bằng ngày bắt đầu.
+                </p>
+              ) : (
+                <p className="text-[10.5px] text-[#231F20]/60">
+                  Để trống nếu muốn lặp không giới hạn thời gian.
+                </p>
+              )}
+            </div>
+          )}
         </form>
 
         <div className="border-t border-orange-100 bg-orange-50/35 px-4 py-3 flex items-center gap-2 shrink-0">
@@ -724,10 +958,22 @@ export function EventShiftModal({
           <button
             type="submit"
             form="unified-event-form"
-            disabled={(!title.trim() && category !== "work") || !timeValid}
-            className="flex-1 h-10 rounded-2xl bg-[#FF7A00] text-xs font-bold text-white hover:bg-orange-600 disabled:opacity-40 transition"
+            disabled={
+              (!title.trim() && category !== "work") ||
+              !timeValid ||
+              !repeatDateValid
+            }
+            className={`flex-1 h-10 rounded-2xl text-xs font-bold text-white disabled:opacity-40 transition ${
+              category === "work" && isCompleted
+                ? "bg-[#276723] hover:bg-[#1f531c]"
+                : "bg-[#FF7A00] hover:bg-orange-600"
+            }`}
           >
-            {isEditing ? "Lưu thay đổi" : "Lưu lịch"}
+            {category === "work" && isCompleted
+              ? "Lưu & Chốt thực nhận"
+              : isEditing
+                ? "Lưu thay đổi"
+                : "Lưu lịch"}
           </button>
         </div>
       </div>

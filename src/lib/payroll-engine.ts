@@ -1,12 +1,16 @@
 import {
   formatWeekRangeLabel,
   getDurationMinutes,
+  getOccurrenceIsoDate,
   getWeekKeyByOffset,
   isOvernightShift,
+  isWeeklyEventActiveOnDate,
   timeToMinutes,
   toLocalIsoDate,
   toMondayFirstDay,
 } from "@/lib/date-utils";
+
+export { getOccurrenceIsoDate };
 import type {
   DayOfWeek,
   IncomeFilterPeriod,
@@ -39,6 +43,7 @@ export function calculateShiftPay(
     | "isOvernight"
     | "breakMinutes"
     | "isHoliday"
+    | "holidayMultiplier"
     | "bonusAmount"
     | "deductionAmount"
   >,
@@ -79,7 +84,10 @@ export function calculateShiftPay(
   let multiplierReason: "normal" | "weekend" | "holiday" = "normal";
 
   if (event.isHoliday) {
-    multiplier = Math.max(1, job.holidayMultiplier || 1);
+    multiplier = Math.max(
+      1,
+      event.holidayMultiplier || job.holidayMultiplier || 4
+    );
     if (multiplier > 1) multiplierReason = "holiday";
   } else if (dayOfWeek === 5 || dayOfWeek === 6) {
     multiplier = Math.max(1, job.weekendMultiplier || 1);
@@ -109,16 +117,6 @@ export function calculateShiftPay(
     deduction,
     totalPay,
   };
-}
-
-export function getOccurrenceIsoDate(
-  weekKey: string,
-  dayOfWeek: DayOfWeek
-): string {
-  const [y, m, d] = weekKey.split("-").map(Number);
-  const date = new Date(y, (m || 1) - 1, d || 1);
-  date.setDate(date.getDate() + dayOfWeek);
-  return toLocalIsoDate(date);
 }
 
 export function formatShortDateFromIso(isoDate: string): string {
@@ -161,19 +159,38 @@ export function isOccurrenceManuallyCompleted(
   return Boolean(event.completedDates?.includes(isoDate));
 }
 
+export function resolveEventForDate(
+  event: ScheduleEvent,
+  isoDate?: string
+): ScheduleEvent {
+  if (
+    !isoDate ||
+    event.category !== "work" ||
+    event.repeatMode !== "weekly" ||
+    !event.actualLogs?.[isoDate]
+  ) {
+    return event;
+  }
+  return {
+    ...event,
+    ...event.actualLogs[isoDate],
+  };
+}
+
 function buildOccurrence(
   event: ScheduleEvent,
   isoDate: string,
   jobs: JobProfile[],
   now: Date
 ): ShiftOccurrence {
-  const job = resolveJobForEvent(event, jobs);
-  const pay = calculateShiftPay(event, job, event.dayOfWeek);
-  const autoCompleted = hasShiftEndPassed(
+  const effectiveEvent = resolveEventForDate(event, isoDate);
+  const job = resolveJobForEvent(effectiveEvent, jobs);
+  const pay = calculateShiftPay(effectiveEvent, job, effectiveEvent.dayOfWeek);
+  const isPastScheduled = hasShiftEndPassed(
     isoDate,
-    event.startTime,
-    event.endTime,
-    event.isOvernight,
+    effectiveEvent.startTime,
+    effectiveEvent.endTime,
+    effectiveEvent.isOvernight,
     now
   );
   const manualCompleted = isOccurrenceManuallyCompleted(event, isoDate);
@@ -182,12 +199,12 @@ function buildOccurrence(
     occurrenceKey: `${event.id}::${isoDate}`,
     isoDate,
     shortDate: formatShortDateFromIso(isoDate),
-    dayOfWeek: event.dayOfWeek,
-    event,
+    dayOfWeek: effectiveEvent.dayOfWeek,
+    event: effectiveEvent,
     job,
     pay,
-    isCompleted: autoCompleted || manualCompleted,
-    isAutoCompletedByTime: autoCompleted,
+    isCompleted: manualCompleted,
+    isPastScheduled,
   };
 }
 
@@ -198,12 +215,14 @@ export function expandWorkOccurrencesForWeekOffset(
   referenceDate: Date = new Date()
 ): ShiftOccurrence[] {
   const weekKey = getWeekKeyByOffset(weekOffset, referenceDate);
-  const workEvents = allEvents.filter(
-    (ev) =>
-      ev.category === "work" &&
-      (ev.repeatMode === "weekly" ||
-        (ev.repeatMode === "once" && ev.weekKey === weekKey))
-  );
+  const workEvents = allEvents.filter((ev) => {
+    if (ev.category !== "work") return false;
+    if (ev.repeatMode === "once") return ev.weekKey === weekKey;
+    return isWeeklyEventActiveOnDate(
+      ev,
+      getOccurrenceIsoDate(weekKey, ev.dayOfWeek)
+    );
+  });
 
   const occurrences = workEvents.map((ev) => {
     const isoDate = getOccurrenceIsoDate(weekKey, ev.dayOfWeek);
@@ -252,7 +271,7 @@ export function expandWorkOccurrencesForMonth(
 
     for (const ev of workEvents) {
       if (ev.dayOfWeek !== dayOfWeek) continue;
-      if (ev.repeatMode === "weekly") {
+      if (ev.repeatMode === "weekly" && isWeeklyEventActiveOnDate(ev, isoDate)) {
         occurrences.push(buildOccurrence(ev, isoDate, jobs, referenceDate));
       } else if (ev.repeatMode === "once" && ev.weekKey === weekKey) {
         occurrences.push(buildOccurrence(ev, isoDate, jobs, referenceDate));
@@ -304,6 +323,7 @@ export function computePeriodIncomeSummary(
   let projectedAmount = 0;
   let completedCount = 0;
   let upcomingCount = 0;
+  let unconfirmedPastCount = 0;
   let totalPaidMinutes = 0;
 
   const byJob = new Map<
@@ -339,6 +359,9 @@ export function computePeriodIncomeSummary(
     } else {
       projectedAmount += occ.pay.totalPay;
       upcomingCount += 1;
+      if (occ.isPastScheduled) {
+        unconfirmedPastCount += 1;
+      }
     }
 
     if (occ.job) {
@@ -380,6 +403,7 @@ export function computePeriodIncomeSummary(
     totalAmount,
     completedCount,
     upcomingCount,
+    unconfirmedPastCount,
     totalPaidMinutes,
     jobSummaries,
   };

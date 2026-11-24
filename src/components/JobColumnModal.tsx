@@ -38,7 +38,7 @@ export function JobColumnModal({
     String(job?.weekendMultiplier ?? 1)
   );
   const [holidayMultiplier, setHolidayMultiplier] = useState(
-    String(job?.holidayMultiplier ?? 2)
+    String(job?.holidayMultiplier ?? 4)
   );
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -229,7 +229,7 @@ export function JobColumnModal({
                 Hệ số Ngày lễ
               </label>
               <div className="flex gap-1">
-                {["1.5", "2", "3"].map((m) => (
+                {["1.5", "2", "3", "4"].map((m) => (
                   <button
                     key={m}
                     type="button"

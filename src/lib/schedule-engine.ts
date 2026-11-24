@@ -4,12 +4,18 @@ import {
   formatTimeRangeShort,
   getDurationMinutes,
   getEffectiveEndMinutes,
+  getOccurrenceIsoDate,
   getWeekDaysMeta,
+  isWeeklyEventActiveOnDate,
   minutesToTime,
   timeToMinutes,
 } from "@/lib/date-utils";
 import { formatCurrencyVnd, formatHoursDecimal } from "@/lib/job-meta";
-import { calculateShiftPay, resolveJobForEvent } from "@/lib/payroll-engine";
+import {
+  calculateShiftPay,
+  resolveEventForDate,
+  resolveJobForEvent,
+} from "@/lib/payroll-engine";
 import type {
   ConflictCheckResult,
   ConflictDetail,
@@ -72,11 +78,15 @@ export function getEventsForWeek(
   weekKey: string
 ): ScheduleEvent[] {
   return sortEventsChronologically(
-    allEvents.filter(
-      (ev) =>
-        ev.repeatMode === "weekly" ||
-        (ev.repeatMode === "once" && ev.weekKey === weekKey)
-    )
+    allEvents.filter((ev) => {
+      if (ev.repeatMode === "once") {
+        return ev.weekKey === weekKey;
+      }
+      return isWeeklyEventActiveOnDate(
+        ev,
+        getOccurrenceIsoDate(weekKey, ev.dayOfWeek)
+      );
+    })
   );
 }
 
@@ -351,9 +361,13 @@ export function scanShiftTemplateAcrossWeek(
   });
 }
 
-export function inferPrimarySession(startTime: string, endTime: string): SessionKey {
+export function inferPrimarySession(
+  startTime: string,
+  endTime: string,
+  isOvernight?: boolean
+): SessionKey {
   const start = timeToMinutes(startTime);
-  const end = timeToMinutes(endTime);
+  const end = getEffectiveEndMinutes(startTime, endTime, isOvernight);
   const mid = (start + end) / 2;
   if (mid < 12 * 60) return "morning";
   if (mid < 18 * 60) return "afternoon";
@@ -364,18 +378,9 @@ export function getEventSessions(event: ScheduleEvent): SessionKey[] {
   if (event.sessionKey) {
     return [event.sessionKey];
   }
-  const start = timeToMinutes(event.startTime);
-  const end = getEffectiveEndMinutes(
-    event.startTime,
-    event.endTime,
-    event.isOvernight
-  );
-  const sessions: SessionKey[] = [];
-  if (start < 12 * 60 && end > 0) sessions.push("morning");
-  if (start < 18 * 60 && end > 12 * 60) sessions.push("afternoon");
-  if (end > 18 * 60) sessions.push("evening");
-  if (sessions.length === 0) sessions.push("morning");
-  return sessions;
+  return [
+    inferPrimarySession(event.startTime, event.endTime, event.isOvernight),
+  ];
 }
 
 export interface WeekStats {
@@ -450,6 +455,102 @@ export function getSuggestedFreeSessions(
   }
 
   return suggestions;
+}
+
+export function formatTimeViCompact(
+  time: string,
+  use12h: boolean = true
+): string {
+  const mins = timeToMinutes(time);
+  const h24 = Math.floor(mins / 60) % 24;
+  const m = mins % 60;
+  if (!use12h) {
+    return `${String(h24).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  }
+  const displayHour = h24 === 0 ? 0 : h24 > 12 ? h24 - 12 : h24;
+  return m === 0
+    ? `${displayHour}h`
+    : `${displayHour}h${String(m).padStart(2, "0")}`;
+}
+
+export type CopyScheduleFilter =
+  | { category: "work"; jobId: string | "all" }
+  | { category: "study"; title: string | "all" }
+  | { category: "personal"; title: string | "all" };
+
+export function buildCustomCopyScheduleText(
+  weekEvents: ScheduleEvent[],
+  jobs: JobProfile[],
+  weekDaysMeta: WeekDayMeta[],
+  weekTitle: string,
+  filter: CopyScheduleFilter,
+  use12h: boolean = true
+): string {
+  const lines: string[] = [];
+
+  for (const dayMeta of weekDaysMeta) {
+    const dayResolved = sortEventsChronologically(
+      weekEvents
+        .filter((ev) => ev.dayOfWeek === dayMeta.dayOfWeek)
+        .map((ev) => resolveEventForDate(ev, dayMeta.isoDate))
+    );
+
+    const matched = dayResolved.filter((ev) => {
+      if (ev.category !== filter.category) return false;
+      if (filter.category === "work") {
+        if (filter.jobId === "all") return true;
+        const job = resolveJobForEvent(ev, jobs);
+        return job?.id === filter.jobId;
+      }
+      if (filter.title === "all") return true;
+      return ev.title.trim().toLowerCase() === filter.title.trim().toLowerCase();
+    });
+
+    if (matched.length === 0) continue;
+
+    const showLabelPerItem =
+      (filter.category === "work" && filter.jobId === "all") ||
+      (filter.category !== "work" && filter.title === "all");
+
+    const parts = matched.map((ev) => {
+      const range = `${formatTimeViCompact(ev.startTime, use12h)} - ${formatTimeViCompact(ev.endTime, use12h)}`;
+      if (!showLabelPerItem) return range;
+      const label =
+        ev.category === "work"
+          ? (resolveJobForEvent(ev, jobs)?.name ?? ev.title)
+          : ev.title;
+      return `${range} (${label})`;
+    });
+
+    lines.push(`${dayMeta.fullLabel}: ${parts.join(", ")}`);
+  }
+
+  let heading = "";
+  if (filter.category === "work") {
+    if (filter.jobId === "all") {
+      heading = `Lịch làm (${weekTitle}):`;
+    } else {
+      const jobName =
+        jobs.find((j) => j.id === filter.jobId)?.name ?? "Part-time";
+      heading = `Lịch làm ${jobName}:`;
+    }
+  } else if (filter.category === "study") {
+    heading =
+      filter.title === "all"
+        ? `Lịch học (${weekTitle}):`
+        : `Lịch học ${filter.title}:`;
+  } else {
+    heading =
+      filter.title === "all"
+        ? `Lịch cá nhân (${weekTitle}):`
+        : `Lịch cá nhân ${filter.title}:`;
+  }
+
+  if (lines.length === 0) {
+    return `${heading}\nChưa có lịch nào trong tuần này.`;
+  }
+
+  return [heading, ...lines].join("\n");
 }
 
 export function buildCopyScheduleText(

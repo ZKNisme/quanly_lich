@@ -7,11 +7,11 @@ import {
   CalendarDays,
   CheckCircle2,
   Clock,
+  Copy,
   ListTodo,
   MapPin,
   Plus,
   Repeat,
-  Sparkles,
 } from "lucide-react";
 import {
   formatDurationVi,
@@ -19,15 +19,14 @@ import {
   getDurationMinutes,
 } from "@/lib/date-utils";
 import {
-  formatCurrencyCompact,
   formatCurrencyVnd,
-  formatHoursDecimal,
   JOB_COLOR_STYLES,
 } from "@/lib/job-meta";
 import {
   calculateShiftPay,
   hasShiftEndPassed,
   isOccurrenceManuallyCompleted,
+  resolveEventForDate,
   resolveJobForEvent,
 } from "@/lib/payroll-engine";
 import {
@@ -51,14 +50,14 @@ interface MobileScheduleViewProps {
   settings: PlannerSettings;
   selectedDay: DayOfWeek;
   onSelectDay: (day: DayOfWeek) => void;
-  onEditEvent: (event: ScheduleEvent) => void;
+  onEditEvent: (event: ScheduleEvent, isoDate?: string) => void;
   onQuickAddInSlot: (
     dayOfWeek: DayOfWeek,
     startTime: string,
     endTime: string
   ) => void;
-  onOpenMobileShiftChecker: () => void;
   onOpenSubjectsModal: () => void;
+  onOpenCopyModal: () => void;
   isHydrated: boolean;
 }
 
@@ -71,8 +70,8 @@ export function MobileScheduleView({
   onSelectDay,
   onEditEvent,
   onQuickAddInSlot,
-  onOpenMobileShiftChecker,
   onOpenSubjectsModal,
+  onOpenCopyModal,
   isHydrated,
 }: MobileScheduleViewProps) {
   const [mobileMode, setMobileMode] = useState<"timeline" | "overview">(
@@ -80,7 +79,9 @@ export function MobileScheduleView({
   );
 
   const selectedDayMeta = weekDaysMeta[selectedDay] ?? weekDaysMeta[0];
-  const dayEvents = getEventsForDay(weekEvents, selectedDay);
+  const dayEvents = getEventsForDay(weekEvents, selectedDay).map((ev) =>
+    resolveEventForDate(ev, selectedDayMeta.isoDate)
+  );
   const timelineItems = buildDayTimeline(dayEvents, settings);
 
   const totalFreeMinutes = timelineItems.reduce(
@@ -187,15 +188,6 @@ export function MobileScheduleView({
               <BookOpen className="h-3.5 w-3.5" />
               <span>Thêm môn</span>
             </button>
-
-            <button
-              type="button"
-              onClick={onOpenMobileShiftChecker}
-              className="inline-flex items-center gap-1 rounded-2xl border border-orange-200 bg-[#FFFDF9] px-2.5 py-1.5 text-[11px] font-bold text-[#FF7A00]"
-            >
-              <Sparkles className="h-3.5 w-3.5" />
-              <span>Soi ca</span>
-            </button>
           </div>
         </div>
       </div>
@@ -261,7 +253,7 @@ export function MobileScheduleView({
 
                   <span className="inline-flex items-center gap-1 rounded-2xl bg-[#FFFDF9] px-3 py-1.5 text-[11px] font-bold text-[#276723] border border-[#C3E5AE] shrink-0">
                     <Plus className="h-3.5 w-3.5" />
-                    <span>Nhận ca</span>
+                    <span>Thêm việc</span>
                   </span>
                 </button>
               );
@@ -280,16 +272,19 @@ export function MobileScheduleView({
               : null;
             const isCompleted =
               isWork && isHydrated
+                ? isOccurrenceManuallyCompleted(
+                    event,
+                    selectedDayMeta.isoDate
+                  )
+                : false;
+            const isPastUnconfirmed =
+              isWork && isHydrated && !isCompleted
                 ? hasShiftEndPassed(
                     selectedDayMeta.isoDate,
                     event.startTime,
                     event.endTime,
                     event.isOvernight,
                     new Date()
-                  ) ||
-                  isOccurrenceManuallyCompleted(
-                    event,
-                    selectedDayMeta.isoDate
                   )
                 : false;
 
@@ -310,7 +305,7 @@ export function MobileScheduleView({
               <button
                 key={event.id}
                 type="button"
-                onClick={() => onEditEvent(event)}
+                onClick={() => onEditEvent(event, selectedDayMeta.isoDate)}
                 className={`w-full text-left rounded-3xl border p-4 space-y-2 active:scale-[0.99] transition ${cardClass}`}
               >
                 <div className="flex items-center justify-between gap-2">
@@ -347,22 +342,29 @@ export function MobileScheduleView({
                   )}
                 </div>
 
-                {isWork && pay && (
-                  <div className="flex items-center gap-1.5 flex-wrap text-[11px] font-semibold">
-                    <span>Tính công {formatHoursDecimal(pay.paidMinutes)}</span>
-                    {pay.multiplier > 1 && (
-                      <span className="rounded-lg bg-[#FFFDF9]/85 px-1.5 py-0.5 text-[10px] font-bold">
-                        x{pay.multiplier}
-                      </span>
-                    )}
-                    {isCompleted && (
-                      <span className="inline-flex items-center gap-0.5 rounded-lg bg-[#ECF7E4] px-1.5 py-0.5 text-[10px] font-bold text-[#276723] border border-[#C3E5AE]">
-                        <CheckCircle2 className="h-2.5 w-2.5" />
-                        Đã làm
-                      </span>
-                    )}
-                  </div>
-                )}
+                {isWork &&
+                  pay &&
+                  (pay.multiplier > 1 || isCompleted || isPastUnconfirmed) && (
+                    <div className="flex items-center gap-1.5 flex-wrap text-[11px] font-semibold">
+                      {pay.multiplier > 1 && (
+                        <span className="rounded-lg bg-[#FFFDF9]/85 px-1.5 py-0.5 text-[10px] font-bold">
+                          x{pay.multiplier}
+                        </span>
+                      )}
+                      {isCompleted && (
+                        <span className="inline-flex items-center gap-0.5 rounded-lg bg-[#ECF7E4] px-1.5 py-0.5 text-[10px] font-bold text-[#276723] border border-[#C3E5AE]">
+                          <CheckCircle2 className="h-2.5 w-2.5" />
+                          Đã chốt giờ
+                        </span>
+                      )}
+                      {isPastUnconfirmed && (
+                        <span className="inline-flex items-center gap-0.5 rounded-lg bg-amber-100/90 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 border border-amber-300/70">
+                          <Clock className="h-2.5 w-2.5" />
+                          Chờ chốt giờ
+                        </span>
+                      )}
+                    </div>
+                  )}
 
                 {event.note && (
                   <div className="flex items-center gap-1 text-xs opacity-85">
@@ -422,11 +424,15 @@ export function MobileScheduleView({
                   </div>
 
                   {weekDaysMeta.map((day) => {
-                    const cellEvents = weekEvents.filter(
-                      (ev) =>
-                        ev.dayOfWeek === day.dayOfWeek &&
-                        getEventSessions(ev).includes(session.key)
-                    );
+                    const cellEvents = weekEvents
+                      .filter(
+                        (ev) =>
+                          ev.dayOfWeek === day.dayOfWeek &&
+                          getEventSessions(
+                            resolveEventForDate(ev, day.isoDate)
+                          ).includes(session.key)
+                      )
+                      .map((ev) => resolveEventForDate(ev, day.isoDate));
 
                     return (
                       <div
@@ -442,9 +448,6 @@ export function MobileScheduleView({
                             const jc = job
                               ? JOB_COLOR_STYLES[job.color]
                               : null;
-                            const pay = isWork
-                              ? calculateShiftPay(ev, job, ev.dayOfWeek)
-                              : null;
 
                             const cls =
                               isWork && jc
@@ -457,7 +460,7 @@ export function MobileScheduleView({
                               <button
                                 key={`${session.key}-${ev.id}`}
                                 type="button"
-                                onClick={() => onEditEvent(ev)}
+                                onClick={() => onEditEvent(ev, day.isoDate)}
                                 className={`w-full text-left rounded-xl border px-1 py-1 ${cls}`}
                               >
                                 <div className="font-mono text-[8.5px] font-bold tabular-nums truncate">
@@ -466,11 +469,6 @@ export function MobileScheduleView({
                                 <div className="text-[9px] font-bold leading-tight line-clamp-2 text-[#231F20]">
                                   {isWork && job ? job.name : ev.title}
                                 </div>
-                                {pay && (
-                                  <div className="text-[8.5px] font-extrabold text-[#231F20] tabular-nums">
-                                    {formatCurrencyCompact(pay.totalPay)}
-                                  </div>
-                                )}
                               </button>
                             );
                           })
@@ -498,6 +496,17 @@ export function MobileScheduleView({
           </div>
         </div>
       )}
+
+      <div className="px-3 pt-1">
+        <button
+          type="button"
+          onClick={onOpenCopyModal}
+          className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-[#231F20] px-4 py-3 text-xs font-bold text-[#FFFDF9] hover:bg-black active:scale-[0.99] transition"
+        >
+          <Copy className="h-4 w-4 text-[#FF7A00]" />
+          <span>Copy lịch chốt</span>
+        </button>
+      </div>
     </div>
   );
 }

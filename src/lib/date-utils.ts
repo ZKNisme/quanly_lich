@@ -1,4 +1,9 @@
-import type { DayOfWeek, WeekDayMeta, WeekScope } from "@/types/schedule";
+import type {
+  DayOfWeek,
+  RepeatMode,
+  WeekDayMeta,
+  WeekScope,
+} from "@/types/schedule";
 
 export const DAY_SHORT_LABELS: readonly string[] = [
   "T2",
@@ -215,4 +220,28 @@ export function formatWeekTitleWithYear(
   const sundayIso = days[6].isoDate;
   const year = sundayIso.split("-")[0];
   return `Tuần ${days[0].shortDate} - ${days[6].shortDate}/${year}`;
+}
+
+export function getOccurrenceIsoDate(
+  weekKey: string,
+  dayOfWeek: DayOfWeek
+): string {
+  const [y, m, d] = weekKey.split("-").map(Number);
+  const date = new Date(y, (m || 1) - 1, d || 1);
+  date.setDate(date.getDate() + dayOfWeek);
+  return toLocalIsoDate(date);
+}
+
+export function isWeeklyEventActiveOnDate(
+  ev: {
+    repeatMode: RepeatMode;
+    repeatStartDate?: string | null;
+    repeatEndDate?: string | null;
+  },
+  isoDate: string
+): boolean {
+  if (ev.repeatMode !== "weekly") return false;
+  if (ev.repeatStartDate && isoDate < ev.repeatStartDate) return false;
+  if (ev.repeatEndDate && isoDate > ev.repeatEndDate) return false;
+  return true;
 }

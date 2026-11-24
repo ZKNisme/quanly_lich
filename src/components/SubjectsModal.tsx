@@ -31,24 +31,39 @@ export function SubjectsModal({
   const [endTime, setEndTime] = useState("19:00");
   const [note, setNote] = useState("");
   const [repeatMode, setRepeatMode] = useState<RepeatMode>("weekly");
+  const [repeatStartDate, setRepeatStartDate] = useState("");
+  const [repeatEndDate, setRepeatEndDate] = useState("");
 
   const activeSubject =
     subjects.find((s) => s.id === selectedSubjectId) ?? subjects[0] ?? null;
 
+  const repeatDateValid =
+    repeatMode !== "weekly" ||
+    !repeatStartDate ||
+    !repeatEndDate ||
+    repeatEndDate >= repeatStartDate;
+
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !isValidTimeRange(startTime, endTime)) return;
+    if (!name.trim() || !isValidTimeRange(startTime, endTime) || !repeatDateValid)
+      return;
     const created = onAddSubject({
       name: name.trim(),
       startTime,
       endTime,
       note: note.trim(),
       repeatMode,
+      repeatStartDate:
+        repeatMode === "weekly" && repeatStartDate ? repeatStartDate : null,
+      repeatEndDate:
+        repeatMode === "weekly" && repeatEndDate ? repeatEndDate : null,
     });
     setSelectedSubjectId(created.id);
     setAdding(false);
     setName("");
     setNote("");
+    setRepeatStartDate("");
+    setRepeatEndDate("");
   };
 
   const toggleDay = (d: DayOfWeek) => {
@@ -151,9 +166,40 @@ export function SubjectsModal({
                 />
                 <span>Lặp cố định hàng tuần</span>
               </label>
+              {repeatMode === "weekly" && (
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10.5px] font-semibold text-[#231F20]/70 mb-0.5">
+                      Từ ngày
+                    </label>
+                    <input
+                      type="date"
+                      value={repeatStartDate}
+                      onChange={(e) => setRepeatStartDate(e.target.value)}
+                      className="w-full rounded-xl border border-sky-200 bg-white px-2.5 py-1 text-xs font-semibold text-[#231F20] tabular-nums"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10.5px] font-semibold text-[#231F20]/70 mb-0.5">
+                      Đến ngày
+                    </label>
+                    <input
+                      type="date"
+                      min={repeatStartDate || undefined}
+                      value={repeatEndDate}
+                      onChange={(e) => setRepeatEndDate(e.target.value)}
+                      className="w-full rounded-xl border border-sky-200 bg-white px-2.5 py-1 text-xs font-semibold text-[#231F20] tabular-nums"
+                    />
+                  </div>
+                </div>
+              )}
               <button
                 type="submit"
-                disabled={!name.trim() || !isValidTimeRange(startTime, endTime)}
+                disabled={
+                  !name.trim() ||
+                  !isValidTimeRange(startTime, endTime) ||
+                  !repeatDateValid
+                }
                 className="w-full rounded-xl bg-[#231F20] py-2 text-xs font-bold text-white disabled:opacity-40"
               >
                 Lưu môn học

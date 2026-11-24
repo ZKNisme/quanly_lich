@@ -31,7 +31,7 @@ interface MobileIncomeJobsViewProps {
   onEditJob: (job: JobProfile) => void;
   onAddNewJob: () => void;
   onToggleOccurrenceCompleted: (occ: ShiftOccurrence) => void;
-  onEditShiftEvent: (event: ScheduleEvent) => void;
+  onEditShiftEvent: (event: ScheduleEvent, isoDate?: string) => void;
   isHydrated: boolean;
 }
 
@@ -129,7 +129,7 @@ export function MobileIncomeJobsView({
               {formatCurrencyVnd(summary.earnedAmount)}
             </p>
             <span className="text-[10px] text-[#276723] tabular-nums">
-              {summary.completedCount} ca đã làm
+              {summary.completedCount} ca đã chốt giờ
             </span>
           </div>
 
@@ -142,10 +142,21 @@ export function MobileIncomeJobsView({
               {formatCurrencyVnd(summary.projectedAmount)}
             </p>
             <span className="text-[10px] text-sky-800/80 tabular-nums">
-              {summary.upcomingCount} ca sắp làm
+              {summary.upcomingCount} ca theo lịch
             </span>
           </div>
         </div>
+
+        {isHydrated && summary.unconfirmedPastCount > 0 && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50/85 px-3 py-2 text-[11px] font-semibold text-amber-900">
+            Có{" "}
+            <strong className="tabular-nums">
+              {summary.unconfirmedPastCount} ca
+            </strong>{" "}
+            đã qua giờ lịch — chạm vào ca bên dưới để sửa giờ làm thực tế &amp;
+            chốt lương.
+          </div>
+        )}
 
         {/* Monthly Goal (Striped Orange & Cream Progress Bar) */}
         <div className="pt-2 border-t border-orange-100 space-y-1.5">
@@ -279,7 +290,7 @@ export function MobileIncomeJobsView({
             Ca làm trong kỳ ({summary.occurrences.length})
           </h3>
           <span className="text-[11px] text-[#231F20]/50">
-            Chạm để thưởng/phạt
+            Chạm ca để sửa giờ thực tế
           </span>
         </div>
 
@@ -300,7 +311,7 @@ export function MobileIncomeJobsView({
                 >
                   <button
                     type="button"
-                    onClick={() => onEditShiftEvent(occ.event)}
+                    onClick={() => onEditShiftEvent(occ.event, occ.isoDate)}
                     className="flex-1 text-left min-w-0 space-y-1"
                   >
                     <div className="flex items-center gap-1.5 flex-wrap">
@@ -340,16 +351,23 @@ export function MobileIncomeJobsView({
                     </span>
                     <button
                       type="button"
-                      disabled={occ.isAutoCompletedByTime}
                       onClick={() => onToggleOccurrenceCompleted(occ)}
                       className={`inline-flex items-center gap-1 rounded-xl px-2 py-0.5 text-[10px] font-bold ${
                         occ.isCompleted
                           ? "bg-[#ECF7E4] text-[#276723] border border-[#C3E5AE]"
-                          : "border border-orange-200 bg-white text-[#231F20]"
+                          : occ.isPastScheduled
+                            ? "border border-amber-300 bg-amber-50 text-amber-800"
+                            : "border border-orange-200 bg-white text-[#231F20]"
                       }`}
                     >
                       <CheckCircle2 className="h-3 w-3" />
-                      <span>{occ.isCompleted ? "Đã làm" : "Tick xong"}</span>
+                      <span>
+                        {occ.isCompleted
+                          ? "Đã chốt giờ"
+                          : occ.isPastScheduled
+                            ? "Chờ chốt"
+                            : "Chốt ca"}
+                      </span>
                     </button>
                   </div>
                 </div>
