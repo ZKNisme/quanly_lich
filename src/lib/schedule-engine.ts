@@ -363,21 +363,18 @@ export function scanShiftTemplateAcrossWeek(
 
 export function inferPrimarySession(
   startTime: string,
-  endTime: string,
-  isOvernight?: boolean
+  _endTime?: string,
+  _isOvernight?: boolean
 ): SessionKey {
+  void _endTime;
+  void _isOvernight;
   const start = timeToMinutes(startTime);
-  const end = getEffectiveEndMinutes(startTime, endTime, isOvernight);
-  const mid = (start + end) / 2;
-  if (mid < 12 * 60) return "morning";
-  if (mid < 18 * 60) return "afternoon";
+  if (start < 12 * 60) return "morning";
+  if (start < 17 * 60 + 30) return "afternoon";
   return "evening";
 }
 
 export function getEventSessions(event: ScheduleEvent): SessionKey[] {
-  if (event.sessionKey) {
-    return [event.sessionKey];
-  }
   return [
     inferPrimarySession(event.startTime, event.endTime, event.isOvernight),
   ];
