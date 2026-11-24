@@ -69,7 +69,7 @@ export function WorkspaceHeader({
             <BaoNhimLogo className="h-11 w-11 sm:h-12 sm:w-12 shrink-0" />
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight text-[#231F20]">
-                Lịch Tuần & Ví Bánh Bao
+                Lịch Bánh Bao
               </h1>
               {dbSyncStatus === "offline" ? (
                 <button

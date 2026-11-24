@@ -15,13 +15,13 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Ví Bánh Bao — Lịch Tuần & Tính Lương",
+  title: "Lịch Bánh Bao — Lịch Tuần & Tính Lương",
   description:
     "Ứng dụng quản lý lịch học, soi ca làm, chống trùng lịch và tính lương Part-time chủ đề Bánh Bao Nhím.",
-  applicationName: "Ví Bánh Bao",
+  applicationName: "Lịch Bánh Bao",
   appleWebApp: {
     capable: true,
-    title: "Ví Bánh Bao",
+    title: "Lịch Bánh Bao",
     statusBarStyle: "default",
   },
   icons: {

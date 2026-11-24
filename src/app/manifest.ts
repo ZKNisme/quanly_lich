@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Lịch Tuần & Ví Bánh Bao",
-    short_name: "Ví Bánh Bao",
+    name: "Lịch Bánh Bao — Lịch Tuần & Tính Lương",
+    short_name: "Lịch Bánh Bao",
     description:
       "Quản lý lịch học, chốt ca làm & tính lương Part-time chủ đề Bánh Bao Nhím.",
     start_url: "/",
@@ -29,3 +29,4 @@ export default function manifest(): MetadataRoute.Manifest {
     ],
   };
 }
+
