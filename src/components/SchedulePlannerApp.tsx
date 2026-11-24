@@ -25,6 +25,7 @@ import {
   formatWeekTitleWithYear,
   getWeekDaysMetaByOffset,
   getWeekKeyByOffset,
+  toMondayFirstDay,
 } from "@/lib/date-utils";
 import { expandWorkOccurrencesForWeekOffset } from "@/lib/payroll-engine";
 import { getEventsForWeek } from "@/lib/schedule-engine";
@@ -64,7 +65,13 @@ export function SchedulePlannerApp() {
 
   const [weekOffset, setWeekOffset] = useState<number>(0);
   const [mobileTab, setMobileTab] = useState<"schedule" | "income">("schedule");
-  const [selectedDay, setSelectedDay] = useState<DayOfWeek>(0);
+  const [userSelectedDay, setUserSelectedDay] = useState<DayOfWeek | null>(
+    null
+  );
+  const selectedDay: DayOfWeek = useMemo(
+    () => userSelectedDay ?? (isHydrated ? toMondayFirstDay(new Date()) : 0),
+    [userSelectedDay, isHydrated]
+  );
 
   // Modals
   const [eventDraft, setEventDraft] = useState<EventShiftDraft | null>(null);
@@ -341,7 +348,7 @@ export function SchedulePlannerApp() {
       };
     });
 
-    setSelectedDay(payload.dayOfWeek);
+    setUserSelectedDay(payload.dayOfWeek);
     setEventDraft(null);
     showToast(
       payload.category === "work" && payload.isCompleted
@@ -491,7 +498,10 @@ export function SchedulePlannerApp() {
         weekOffset={weekOffset}
         onPrevWeek={() => setWeekOffset((w) => w - 1)}
         onNextWeek={() => setWeekOffset((w) => w + 1)}
-        onResetToTodayWeek={() => setWeekOffset(0)}
+        onResetToTodayWeek={() => {
+          setWeekOffset(0);
+          setUserSelectedDay(null);
+        }}
         weekTitle={weekTitle}
         isHydrated={isHydrated}
       />
@@ -562,7 +572,7 @@ export function SchedulePlannerApp() {
             jobs={state.jobs}
             settings={state.settings}
             selectedDay={selectedDay}
-            onSelectDay={setSelectedDay}
+            onSelectDay={setUserSelectedDay}
             onEditEvent={(ev, isoDate) => {
               const originalEvent =
                 state.events.find((item) => item.id === ev.id) ?? ev;
