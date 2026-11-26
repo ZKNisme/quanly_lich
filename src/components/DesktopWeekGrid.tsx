@@ -8,7 +8,7 @@ import {
   Plus,
   Repeat,
 } from "lucide-react";
-import { formatDurationVi, formatTimeRangeShort } from "@/lib/date-utils";
+import { formatTimeRangeShort } from "@/lib/date-utils";
 import {
   formatHoursDecimal,
   JOB_COLOR_STYLES,
@@ -58,6 +58,9 @@ export function DesktopWeekGrid({
           (ev) => resolveEventForDate(ev, dayMeta.isoDate)
         );
         const timelineItems = buildDayTimeline(dayEvents, settings);
+        const eventTimelineItems = timelineItems.filter(
+          (item) => item.type === "event"
+        );
         const isToday = dayMeta.isToday && isHydrated;
 
         return (
@@ -112,39 +115,16 @@ export function DesktopWeekGrid({
 
             {/* Day Vertical Timeline Items */}
             <div className="p-2 space-y-1.5 flex-1">
-              {timelineItems.map((item) => {
-                if (item.type === "free") {
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() =>
-                        onQuickAddOnDay(
-                          dayMeta.dayOfWeek,
-                          item.startTime,
-                          item.endTime
-                        )
-                      }
-                      className="w-full text-left group rounded-2xl border border-[#C3E5AE] bg-[#ECF7E4] px-2.5 py-2 text-[#276723] hover:bg-[#dff1d2] transition"
-                    >
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="text-[10.5px] font-extrabold">
-                          Trống
-                        </span>
-                        <span className="rounded-lg bg-[#FFFDF9]/85 px-1.5 py-0.5 text-[9.5px] font-bold tabular-nums">
-                          {formatDurationVi(item.durationMinutes)}
-                        </span>
-                      </div>
-                      <div className="mt-0.5 flex items-center justify-between gap-1">
-                        <span className="font-mono text-[10px] font-semibold tabular-nums opacity-90">
-                          {item.startTime} - {item.endTime}
-                        </span>
-                        <Plus className="h-3 w-3 opacity-0 group-hover:opacity-100 transition" />
-                      </div>
-                    </button>
-                  );
-                }
-
+              {eventTimelineItems.length === 0 ? (
+                <button
+                  type="button"
+                  onClick={() => onQuickAddOnDay(dayMeta.dayOfWeek)}
+                  className="w-full rounded-2xl border border-dashed border-orange-200/70 px-2.5 py-5 text-center text-[11px] font-semibold text-[#231F20]/40 hover:border-orange-300 hover:text-[#FF7A00] hover:bg-orange-50/40 transition"
+                >
+                  + Thêm lịch
+                </button>
+              ) : (
+                eventTimelineItems.map((item) => {
                 const {
                   event,
                   hasOverlap,
@@ -229,7 +209,8 @@ export function DesktopWeekGrid({
                     )}
                   </button>
                 );
-              })}
+              })
+              )}
             </div>
           </div>
         );
