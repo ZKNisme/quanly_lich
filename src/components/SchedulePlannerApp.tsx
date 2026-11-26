@@ -211,6 +211,7 @@ export function SchedulePlannerApp() {
     weekKey: string | null;
     repeatStartDate?: string | null;
     repeatEndDate?: string | null;
+    applyRepeatRangeToMatching?: boolean;
     jobId?: string;
     breakMinutes?: number;
     breakStartTime?: string;
@@ -262,8 +263,30 @@ export function SchedulePlannerApp() {
           ? []
           : targetDays.filter((d) => d !== primaryTargetDay);
 
+        const matchingTitleKey =
+          payload.applyRepeatRangeToMatching &&
+          existingEvent &&
+          existingEvent.repeatMode === "weekly" &&
+          payload.repeatMode === "weekly"
+            ? existingEvent.title.trim().toLowerCase()
+            : null;
+
         const updatedEvents = prev.events.map((ev) => {
-          if (ev.id !== payload.id) return ev;
+          if (ev.id !== payload.id) {
+            if (
+              matchingTitleKey &&
+              ev.repeatMode === "weekly" &&
+              ev.category === existingEvent?.category &&
+              ev.title.trim().toLowerCase() === matchingTitleKey
+            ) {
+              return {
+                ...ev,
+                repeatStartDate: payload.repeatStartDate ?? null,
+                repeatEndDate: payload.repeatEndDate ?? null,
+              };
+            }
+            return ev;
+          }
 
           if (
             payload.applyToIsoDate &&
@@ -353,9 +376,24 @@ export function SchedulePlannerApp() {
           ...workExtras,
         }));
 
+        const updatedSubjects =
+          matchingTitleKey && payload.category === "study"
+            ? prev.subjects.map((subj) =>
+                subj.repeatMode === "weekly" &&
+                subj.name.trim().toLowerCase() === matchingTitleKey
+                  ? {
+                      ...subj,
+                      repeatStartDate: payload.repeatStartDate ?? null,
+                      repeatEndDate: payload.repeatEndDate ?? null,
+                    }
+                  : subj
+              )
+            : prev.subjects;
+
         return {
           ...prev,
           events: [...updatedEvents, ...addedExtras],
+          subjects: updatedSubjects,
         };
       }
 
@@ -412,6 +450,16 @@ export function SchedulePlannerApp() {
     }));
     setEventDraft(null);
     showToast("Đã xóa lịch trình");
+  };
+
+  const handleDeleteManyEvents = (eventIds: string[]) => {
+    const idSet = new Set(eventIds);
+    commitPlannerChange((prev) => ({
+      ...prev,
+      events: prev.events.filter((ev) => !idSet.has(ev.id)),
+    }));
+    setEventDraft(null);
+    showToast(`Đã xóa cả ${eventIds.length} buổi lặp!`);
   };
 
   const handleAddSubject = (subject: Omit<SubjectPreset, "id">) => {
@@ -710,6 +758,7 @@ export function SchedulePlannerApp() {
           subjects={state.subjects}
           onSave={handleSaveEvent}
           onDelete={handleDeleteEvent}
+          onDeleteMany={handleDeleteManyEvents}
           onOpenJobsModal={() => setJobModalTarget(state.jobs[0] ?? "new")}
           onClose={() => setEventDraft(null)}
         />

@@ -70,6 +70,7 @@ interface EventShiftModalProps {
     weekKey: string | null;
     repeatStartDate?: string | null;
     repeatEndDate?: string | null;
+    applyRepeatRangeToMatching?: boolean;
     jobId?: string;
     breakMinutes?: number;
     breakStartTime?: string;
@@ -81,6 +82,7 @@ interface EventShiftModalProps {
     isCompleted?: boolean;
   }) => void;
   onDelete?: (eventId: string) => void;
+  onDeleteMany?: (eventIds: string[]) => void;
   onOpenJobsModal: () => void;
   onClose: () => void;
 }
@@ -120,6 +122,7 @@ export function EventShiftModal({
   subjects,
   onSave,
   onDelete,
+  onDeleteMany,
   onOpenJobsModal,
   onClose,
 }: EventShiftModalProps) {
@@ -170,6 +173,7 @@ export function EventShiftModal({
   const [repeatEndDate, setRepeatEndDate] = useState(
     initial.editingEvent?.repeatEndDate ?? ""
   );
+  const [applyRangeToMatching, setApplyRangeToMatching] = useState(true);
   const [touchedRepeat, setTouchedRepeat] = useState(isEditing);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -215,6 +219,18 @@ export function EventShiftModal({
     () => jobs.find((j) => j.id === jobId) ?? jobs[0] ?? null,
     [jobs, jobId]
   );
+
+  const matchingWeeklyEvents = useMemo(() => {
+    const editing = initial.editingEvent;
+    if (!editing || editing.repeatMode !== "weekly") return [];
+    const normalized = editing.title.trim().toLowerCase();
+    return allEvents.filter(
+      (ev) =>
+        ev.repeatMode === "weekly" &&
+        ev.category === editing.category &&
+        ev.title.trim().toLowerCase() === normalized
+    );
+  }, [initial.editingEvent, allEvents]);
 
   const effectiveOvernight = isOvernight;
   const timeValid = isValidTimeRange(startTime, endTime, effectiveOvernight);
@@ -368,6 +384,11 @@ export function EventShiftModal({
         repeatMode === "weekly" && repeatStartDate ? repeatStartDate : null,
       repeatEndDate:
         repeatMode === "weekly" && repeatEndDate ? repeatEndDate : null,
+      ...(repeatMode === "weekly" &&
+      matchingWeeklyEvents.length > 1 &&
+      applyRangeToMatching
+        ? { applyRepeatRangeToMatching: true }
+        : {}),
       ...(category === "work"
         ? {
             jobId: selectedJob?.id,
@@ -956,6 +977,21 @@ export function EventShiftModal({
                   Để trống nếu muốn lặp không giới hạn thời gian.
                 </p>
               )}
+              {matchingWeeklyEvents.length > 1 && initial.editingEvent && (
+                <label className="flex items-center gap-2 pt-1 text-[11px] font-bold text-[#231F20] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={applyRangeToMatching}
+                    onChange={(e) => setApplyRangeToMatching(e.target.checked)}
+                    className="rounded border-orange-300"
+                  />
+                  <span>
+                    Áp dụng khoảng ngày lặp cho cả{" "}
+                    {matchingWeeklyEvents.length} buổi &ldquo;
+                    {initial.editingEvent.title}&rdquo;
+                  </span>
+                </label>
+              )}
             </div>
           )}
         </form>
@@ -972,6 +1008,25 @@ export function EventShiftModal({
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
+              ) : matchingWeeklyEvents.length > 1 && onDeleteMany ? (
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => onDelete(initial.editingEvent!.id)}
+                    className="h-10 rounded-2xl border border-rose-300 bg-rose-50 px-2.5 text-[11px] font-bold text-rose-700"
+                  >
+                    Xóa buổi này
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onDeleteMany(matchingWeeklyEvents.map((e) => e.id))
+                    }
+                    className="h-10 rounded-2xl bg-rose-600 px-2.5 text-[11px] font-bold text-white"
+                  >
+                    Xóa cả {matchingWeeklyEvents.length} buổi
+                  </button>
+                </div>
               ) : (
                 <button
                   type="button"
